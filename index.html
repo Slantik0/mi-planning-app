@@ -2101,20 +2101,25 @@
   // Única fuente de verdad para esta decisión — la usan tanto la tarjeta de Inicio como la
   // cabecera de la pantalla completa, para no calcular lo mismo de dos formas distintas.
   function cycleStatusView(stats){
+    // showPhase: solo mostramos la 3ª línea (fase) cuando aporta algo que el título no dice ya.
+    // En menstruación/ovulación/ventana fértil, la fase es literalmente la misma palabra que el
+    // eyebrow — repetirla ahí no añade información, solo ruido visual.
     if(stats.isLate){
       const d = -stats.daysUntilNext;
-      return { eyebrow:"RETRASO", title:`Llevas ${d} día${d===1?'':'s'} de retraso`, ringNum:d, ringUnit:"días tarde", pct:1 };
+      // pct:0 (no pct:1) — un anillo completo se usa en el resto de la app para "objetivo cumplido";
+      // usarlo aquí para un retraso mandaría la señal contraria (positiva) para un estado que no lo es.
+      return { eyebrow:"RETRASO", title:`Llevas ${d} día${d===1?'':'s'} de retraso`, ringNum:d, ringUnit:"días tarde", pct:0, showPhase:true };
     }
     if(stats.isMenstruating){
-      return { eyebrow:"MENSTRUACIÓN", title:`Día ${stats.cycleDay} de tu período`, ringNum:stats.cycleDay, ringUnit:`de ${stats.periodLen}`, pct:Math.min(1, stats.cycleDay/stats.periodLen) };
+      return { eyebrow:"MENSTRUACIÓN", title:`Día ${stats.cycleDay} de tu período`, ringNum:stats.cycleDay, ringUnit:`de ${stats.periodLen}`, pct:Math.min(1, stats.cycleDay/stats.periodLen), showPhase:false };
     }
     if(stats.isOvulationDay){
-      return { eyebrow:"OVULACIÓN", title:"Ovulación estimada hoy", ringNum:"🌸", ringUnit:"hoy", pct:1 };
+      return { eyebrow:"OVULACIÓN", title:"Ovulación estimada hoy", ringNum:"🌸", ringUnit:"hoy", pct:1, showPhase:false };
     }
     if(stats.isFertile){
-      return { eyebrow:"VENTANA FÉRTIL", title:"Estás en tu ventana fértil", ringNum:stats.daysUntilNext, ringUnit:"días p. regla", pct:Math.min(1, stats.cycleDay/stats.predCycleLen) };
+      return { eyebrow:"VENTANA FÉRTIL", title:"Estás en tu ventana fértil", ringNum:stats.daysUntilNext, ringUnit:"días", pct:Math.min(1, stats.cycleDay/stats.predCycleLen), showPhase:false };
     }
-    return { eyebrow:"PRÓXIMA REGLA", title:`Próxima regla en ${stats.daysUntilNext} día${stats.daysUntilNext===1?'':'s'}`, ringNum:stats.daysUntilNext, ringUnit:"días", pct:Math.min(1, stats.cycleDay/stats.predCycleLen) };
+    return { eyebrow:"PRÓXIMA REGLA", title:`Próxima regla en ${stats.daysUntilNext} día${stats.daysUntilNext===1?'':'s'}`, ringNum:stats.daysUntilNext, ringUnit:"días", pct:Math.min(1, stats.cycleDay/stats.predCycleLen), showPhase:true };
   }
 
   function cycleCardHTML(){
@@ -2147,7 +2152,7 @@
         <div class="hero-text">
           <p class="eyebrow">${v.eyebrow}</p>
           <h2 style="font-size:17px;">${escapeHtml(v.title)}</h2>
-          <p>${stats.phase}</p>
+          ${v.showPhase ? `<p>${stats.phase}</p>` : ""}
         </div>
       </div>`;
   }
@@ -2200,6 +2205,19 @@
     if(log.length === 0) return '<div class="empty">Todavía no hay ciclos registrados.</div>';
     return log.map(entry=>{
       if(editingCycleEntryId === entry.id){
+        // Con endDate ya confirmado hay dos fechas que corregir; la fila compacta de una sola
+        // línea (igual que en Dieta/Gastos) se queda pequeña para eso, así que aquí usamos el
+        // mismo patrón de formulario apilado que "Primer registro"/"Ajustes".
+        if(entry.endDate){
+          return `<div class="list-row" style="flex-direction:column; align-items:stretch; gap:0;">
+            <div class="field-group" style="margin-top:0;"><label>Fecha de inicio</label><input type="date" class="cycle-edit-start" data-id="${entry.id}" value="${entry.startDate}"></div>
+            <div class="field-group"><label>Fecha de fin</label><input type="date" class="cycle-edit-end" data-id="${entry.id}" value="${entry.endDate}"></div>
+            <div class="btnrow">
+              <button class="btn ghost" data-id="${entry.id}" data-action="save-cycle-full">Guardar</button>
+              <button class="btn ghost" data-action="cancel-cycle">Cancelar</button>
+            </div>
+          </div>`;
+        }
         return `<div class="list-row">
           <input type="date" class="inline-edit-input cycle-edit-input" data-id="${entry.id}" value="${entry.startDate}" aria-label="Fecha de inicio">
           <button class="food-del" data-id="${entry.id}" data-action="save-cycle" title="Guardar" aria-label="Guardar fecha">✓</button>
@@ -2230,6 +2248,22 @@
             <button class="btn ghost" id="cycle-confirm-fix">Corregir fecha</button>
           </div>
           <div class="btnrow"><button class="btn ghost" id="cycle-confirm-cancel">Cancelar</button></div>
+        </div>`;
+    }
+    // Mientras dura la regla y no se ha confirmado su último día, la acción principal es
+    // cerrarla (no volver a "abrirla") — así la duración real queda guardada y la predicción
+    // de duración de la regla puede afinarse con datos reales, igual que ya pasa con el ciclo.
+    if(stats.isMenstruating && !stats.lastEntry.endDate){
+      return `
+        <div class="card">
+          <div class="btnrow"><button class="btn primary-brown" id="cycle-end-today-btn">Ha terminado mi regla</button></div>
+          <button class="month-nav-today" id="cycle-end-other-toggle" style="display:block; margin-top:8px;" aria-expanded="false" aria-controls="cycle-end-other-wrap">¿Terminó otro día? Elige la fecha</button>
+          <div id="cycle-end-other-wrap" style="display:none; margin-top:8px;">
+            <div class="form-row">
+              <input type="date" id="cycle-end-other-input" aria-label="Fecha en la que terminó la regla" min="${stats.lastEntry.startDate}" style="flex:1;">
+              <button class="btn ghost" id="cycle-end-other-confirm" style="flex:none;">Registrar</button>
+            </div>
+          </div>
         </div>`;
     }
     return `
@@ -2312,7 +2346,7 @@
       const v = cycleStatusView(stats);
       document.getElementById("cycle-eyebrow").textContent = v.eyebrow;
       document.getElementById("cycle-title").textContent = v.title;
-      document.getElementById("cycle-phase").textContent = stats.phase;
+      document.getElementById("cycle-phase").textContent = v.showPhase ? stats.phase : "";
       const circumference = 238.76;
       requestAnimationFrame(()=>{ document.getElementById("cycle-ring").style.strokeDashoffset = circumference*(1-v.pct); });
       document.getElementById("cycle-ring-num").textContent = v.ringNum;
@@ -2344,6 +2378,21 @@
         document.getElementById("cycle-confirm-cancel").addEventListener("click", ()=>{
           pendingLogDate = null; renderCiclo();
         });
+      } else if(stats.isMenstruating && !stats.lastEntry.endDate){
+        document.getElementById("cycle-end-today-btn").addEventListener("click", ()=>{
+          handleEndPeriod(isoDate(todayDate()));
+        });
+        document.getElementById("cycle-end-other-toggle").addEventListener("click", (e)=>{
+          const wrap = document.getElementById("cycle-end-other-wrap");
+          const expanded = wrap.style.display !== "none";
+          wrap.style.display = expanded ? "none" : "block";
+          e.currentTarget.setAttribute("aria-expanded", String(!expanded));
+        });
+        document.getElementById("cycle-end-other-confirm").addEventListener("click", ()=>{
+          const input = document.getElementById("cycle-end-other-input");
+          if(!input.value || input.value < stats.lastEntry.startDate) return flashInvalid(input);
+          handleEndPeriod(input.value);
+        });
       } else {
         document.getElementById("cycle-log-today-btn").addEventListener("click", ()=>{
           handleLogPeriodStart(isoDate(todayDate()));
@@ -2374,6 +2423,20 @@
           if(!val) return flashInvalid(input);
           const entry = state.cycleLog.find(e=>e.id===btn.dataset.id);
           entry.startDate = val;
+          editingCycleEntryId = null;
+          await saveJSON(pk("cycleLog"), state.cycleLog);
+          renderCiclo(); renderInicio();
+        });
+      });
+      document.querySelectorAll('[data-action="save-cycle-full"]').forEach(btn=>{
+        btn.addEventListener("click", async ()=>{
+          const startInput = document.querySelector(`.cycle-edit-start[data-id="${btn.dataset.id}"]`);
+          const endInput = document.querySelector(`.cycle-edit-end[data-id="${btn.dataset.id}"]`);
+          if(!startInput.value) return flashInvalid(startInput);
+          if(!endInput.value || endInput.value < startInput.value) return flashInvalid(endInput);
+          const entry = state.cycleLog.find(e=>e.id===btn.dataset.id);
+          entry.startDate = startInput.value;
+          entry.endDate = endInput.value;
           editingCycleEntryId = null;
           await saveJSON(pk("cycleLog"), state.cycleLog);
           renderCiclo(); renderInicio();
@@ -2427,6 +2490,20 @@
     state.cycleLog.push({ id: "c"+Date.now(), startDate: dateStr, endDate: null });
     await saveJSON(pk("cycleLog"), state.cycleLog);
     cycleViewDate = parseISODate(dateStr);
+    renderCiclo();
+    renderInicio();
+  }
+
+  // Cierra el ciclo abierto (el último registro sin endDate) con su último día real de regla.
+  // Es lo único que permite que predictedPeriodLength() deje de depender solo del valor
+  // configurado en Ajustes y empiece a afinarse con datos reales, igual que ya pasa con el ciclo.
+  async function handleEndPeriod(dateStr){
+    const log = sortedCycleLog();
+    if(log.length === 0) return;
+    const last = log[log.length-1];
+    last.endDate = dateStr;
+    state.cycleLog = log;
+    await saveJSON(pk("cycleLog"), state.cycleLog);
     renderCiclo();
     renderInicio();
   }
