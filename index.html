@@ -174,6 +174,9 @@
   .streak-banner .txt{ font-size:13.5px; color:var(--ink); line-height:1.35; }
   .streak-banner b{ color:var(--brown); }
 
+  .pomodoro-time{ font-size:44px; font-weight:800; text-align:center; letter-spacing:.02em; margin:10px 0 4px; font-variant-numeric:tabular-nums; }
+  .pomodoro-count{ text-align:center; font-size:12px; color:var(--ink-soft); margin-bottom:4px; }
+
   /* Pills / tags */
   .pill{
     display:inline-block; font-size:11px; font-weight:700; padding:3px 9px; border-radius:99px;
@@ -230,6 +233,16 @@
     color:var(--ink);
   }
   .exrow input:focus{ outline:2px solid var(--blue); outline-offset:1px; }
+  .exrow.all-sets-done .name{ color:var(--green); }
+  .sets-row{ display:flex; gap:6px; margin-top:8px; }
+  .set-dot{
+    width:24px; height:24px; border-radius:50%; border:2px solid var(--line); flex:none;
+    display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700;
+    color:var(--ink-soft); background:#fff; padding:0; font-family:inherit; cursor:pointer;
+    transition: all .15s ease;
+  }
+  .set-dot.done{ background:var(--green); border-color:var(--green); color:#fff; }
+  .set-dot:active{ transform:scale(0.85); }
 
   /* Macro bars */
   .macro-row{ display:flex; align-items:center; gap:10px; margin-bottom:10px; }
@@ -247,6 +260,7 @@
   .btn:active{ transform:scale(0.96); }
   .btn.primary-green{ background:var(--green); color:#fff; }
   .btn.primary-brown{ background:var(--brown); color:#fff; }
+  .btn.primary-blue{ background:var(--blue); color:#fff; }
   .btn.ghost{ background:var(--grey-soft); color:var(--ink); }
 
   input[type=text], input[type=number]{
@@ -313,6 +327,10 @@
     width:100%; padding:10px 12px; border-radius:var(--radius-sm); border:1px solid var(--line);
     background:var(--bg); font-size:14px; color:var(--ink); font-family:inherit;
   }
+  .select-plain{
+    width:100%; padding:10px 12px; border-radius:var(--radius-sm); border:1px solid var(--line);
+    background:var(--bg); font-size:14px; color:var(--ink); font-family:inherit;
+  }
 
   /* ---------- Registro de comidas ---------- */
   .food-input{
@@ -331,6 +349,14 @@
     transition: all .18s ease; white-space:nowrap; overflow:hidden;
   }
   .food-del:active{ transform:scale(0.88); }
+
+  .food-del.has-note{ background:var(--gold-soft); color:var(--brown); }
+  .unit-note-row{ padding:0 4px 10px; }
+  .unit-note-input{
+    width:100%; box-sizing:border-box; padding:8px 10px; border-radius:var(--radius-sm); border:1px solid var(--line);
+    background:var(--bg); font-size:13px; color:var(--ink); font-family:inherit; resize:vertical; outline:none;
+  }
+  .unit-note-input:focus{ border-color:var(--blue); }
 
   /* Edición inline (ej. unidades y cursos de estudio) */
   .inline-edit-input{
@@ -452,7 +478,11 @@
 
     <!-- ============ ENTRENO ============ -->
     <section class="view" id="view-entreno" role="tabpanel" aria-labelledby="tab-entreno" tabindex="0">
+      <div id="deload-alert-section"></div>
       <div id="entreno-body"></div>
+
+      <p class="section-title" id="strength-history-title" style="display:none;">Progreso por ejercicio</p>
+      <div class="card" id="strength-history-card" style="display:none;"></div>
 
       <p class="section-title">Seguimiento de peso</p>
       <div class="card">
@@ -743,6 +773,10 @@
     cycleLog: [],           // [{id,startDate:"YYYY-MM-DD",endDate:"YYYY-MM-DD"|null}]  (solo perfil Noelia)
     trainingDays: [],        // ["YYYY-MM-DD", ...] días con al menos un peso registrado en Entreno
     studyDays: [],           // ["YYYY-MM-DD", ...] días con al menos una unidad marcada como hecha
+    unitNotes: {},           // {unitId: "texto"}  notas rápidas por unidad de estudio (Santi y perfiles con studyModules)
+    setsLog: {},             // {"YYYY-MM-DD_dow-exname": [bool, ...]}  series completadas de la sesión de ese día
+    strengthLog: [],         // [{id,date:"YYYY-MM-DD",exercise,weight}]  un punto por ejercicio y día (peso numérico detectado)
+    deloadAckDate: null,     // "YYYY-MM-DD" última vez que se confirmó el aviso de deload (silencia el aviso 6 semanas)
   };
 
   async function loadState(){
@@ -766,6 +800,10 @@
     state.cycleLog = await loadJSON(pk("cycleLog"), []);
     state.trainingDays = await loadJSON(pk("trainingDays"), []);
     state.studyDays = await loadJSON(pk("studyDays"), []);
+    state.unitNotes = await loadJSON(pk("unitNotes"), {});
+    state.setsLog = await loadJSON(pk("setsLog"), {});
+    state.strengthLog = await loadJSON(pk("strengthLog"), []);
+    state.deloadAckDate = await loadJSON(pk("deloadAckDate"), null);
   }
 
   function renderAll(){
@@ -804,9 +842,11 @@
     gastosViewDate = new Date();
     editingUnitKey = null;
     editingModuleIndex = null;
+    openNoteUnitId = null;
     cycleViewDate = new Date();
     editingCycleEntryId = null;
     pendingLogDate = null;
+    selectedStrengthExercise = null;
     renderProfileSwitch();
     updateHeader();
     renderAll();
@@ -952,16 +992,127 @@
     }
   }
 
+  /* ============ POMODORO ============ */
+  // Estado deliberadamente NO persistido ni ligado a perfil: es un temporizador de la sesión
+  // actual del dispositivo, no un dato de planificación — igual de "efímero" que el reloj del
+  // móvil. Sigue corriendo en segundo plano al cambiar de pestaña o de perfil (SPA, no recarga).
+  const POMODORO_FOCUS = 25*60, POMODORO_BREAK = 5*60;
+  let pomodoroSecondsLeft = POMODORO_FOCUS;
+  let pomodoroPhase = "focus"; // "focus" | "break"
+  let pomodoroRunning = false;
+  let pomodoroTimerId = null;
+  let pomodoroCompletedToday = 0; // solo de esta sesión del navegador, se reinicia al recargar
+
+  function pomodoroFmt(s){
+    const m = Math.floor(s/60), sec = s%60;
+    return String(m).padStart(2,'0')+":"+String(sec).padStart(2,'0');
+  }
+  function pomodoroCardHTML(){
+    return `
+      <div class="card pomodoro-card">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <p class="section-title" style="margin:0;">Pomodoro</p>
+          <span class="pill" id="pomodoro-phase-pill" style="background:${pomodoroPhase==='focus'?'var(--blue)':'var(--green)'}; color:#fff;">${pomodoroPhase==='focus'?'Concentración':'Descanso'}</span>
+        </div>
+        <div class="pomodoro-time" id="pomodoro-time">${pomodoroFmt(pomodoroSecondsLeft)}</div>
+        <div class="pomodoro-count" id="pomodoro-count">${pomodoroCompletedToday ? pomodoroCompletedToday+" pomodoro"+(pomodoroCompletedToday===1?'':'s')+" completados hoy" : "25 min de concentración + 5 de descanso"}</div>
+        <div class="btnrow">
+          <button class="btn ${pomodoroPhase==='focus'?'primary-blue':'primary-green'}" id="pomodoro-toggle-btn">${pomodoroRunning?'Pausar':'Empezar'}</button>
+          <button class="btn ghost" id="pomodoro-reset-btn">Reiniciar</button>
+        </div>
+      </div>`;
+  }
+  function updatePomodoroDisplay(){
+    const timeEl = document.getElementById("pomodoro-time");
+    if(!timeEl) return; // ya no estamos en la vista de Estudio
+    timeEl.textContent = pomodoroFmt(pomodoroSecondsLeft);
+    const pill = document.getElementById("pomodoro-phase-pill");
+    pill.textContent = pomodoroPhase==='focus' ? 'Concentración' : 'Descanso';
+    pill.style.background = pomodoroPhase==='focus' ? 'var(--blue)' : 'var(--green)';
+    document.getElementById("pomodoro-count").textContent = pomodoroCompletedToday
+      ? pomodoroCompletedToday+" pomodoro"+(pomodoroCompletedToday===1?'':'s')+" completados hoy"
+      : "25 min de concentración + 5 de descanso";
+    const toggleBtn = document.getElementById("pomodoro-toggle-btn");
+    toggleBtn.textContent = pomodoroRunning ? 'Pausar' : 'Empezar';
+    toggleBtn.className = "btn " + (pomodoroPhase==='focus' ? 'primary-blue' : 'primary-green');
+  }
+  function pomodoroTick(){
+    pomodoroSecondsLeft--;
+    if(pomodoroSecondsLeft <= 0){
+      if(pomodoroPhase === "focus"){
+        pomodoroCompletedToday++;
+        recordStudyDay().then(renderInicio); // un pomodoro de concentración cuenta como "estudiar hoy" para la racha
+        pomodoroPhase = "break";
+        pomodoroSecondsLeft = POMODORO_BREAK;
+      } else {
+        pomodoroPhase = "focus";
+        pomodoroSecondsLeft = POMODORO_FOCUS;
+      }
+    }
+    updatePomodoroDisplay();
+  }
+  function bindPomodoroHandlers(){
+    document.getElementById("pomodoro-toggle-btn").addEventListener("click", ()=>{
+      pomodoroRunning = !pomodoroRunning;
+      if(pomodoroRunning){
+        pomodoroTimerId = setInterval(pomodoroTick, 1000);
+      } else {
+        clearInterval(pomodoroTimerId);
+      }
+      updatePomodoroDisplay();
+    });
+    document.getElementById("pomodoro-reset-btn").addEventListener("click", ()=>{
+      pomodoroRunning = false;
+      clearInterval(pomodoroTimerId);
+      pomodoroPhase = "focus";
+      pomodoroSecondsLeft = POMODORO_FOCUS;
+      updatePomodoroDisplay();
+    });
+  }
+
   /* ============ ESTUDIO ============ */
   const STUDY_PALETTE = ["var(--blue)","var(--green)","var(--gold)","#6B4C9A","var(--brown)"];
   let editingUnitKey = null;    // "mi-ui" de la unidad en edición (perfiles con contenido propio, ej. Noelia)
   let editingModuleIndex = null; // índice del curso/módulo en edición de nombre
+  let openNoteUnitId = null;    // id de la unidad con la nota rápida desplegada (una sola a la vez)
+
+  function unitNoteRowHTML(unitId){
+    if(openNoteUnitId !== unitId) return "";
+    const val = state.unitNotes[unitId] || "";
+    return `<div class="unit-note-row">
+      <textarea class="unit-note-input" data-unit="${unitId}" rows="2" placeholder="Dudas, cosas que repasar antes del examen...">${escapeHtml(val)}</textarea>
+    </div>`;
+  }
+  function bindUnitNoteHandlers(container){
+    container.querySelectorAll(".note-toggle-btn").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const id = btn.dataset.unit;
+        openNoteUnitId = openNoteUnitId === id ? null : id;
+        renderEstudio();
+        if(openNoteUnitId){
+          const ta = container.querySelector(`.unit-note-input[data-unit="${CSS.escape(id)}"]`) || document.querySelector(`.unit-note-input[data-unit="${CSS.escape(id)}"]`);
+          if(ta) ta.focus();
+        }
+      });
+    });
+    document.querySelectorAll(".unit-note-input").forEach(ta=>{
+      ta.addEventListener("change", async ()=>{
+        const id = ta.dataset.unit;
+        const val = ta.value.trim();
+        if(val) state.unitNotes[id] = val;
+        else delete state.unitNotes[id];
+        await saveJSON(pk("unitNotes"), state.unitNotes);
+        renderEstudio(); // refresca el indicador de "tiene nota" sin cerrar/reordenar nada más
+      });
+    });
+  }
 
   function renderEstudio(){
     const body = document.getElementById("estudio-body");
 
     if(activeProfile === "santi"){
       body.innerHTML = `
+        ${pomodoroCardHTML()}
         <div class="card">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <div>
@@ -973,6 +1124,7 @@
           <div class="pbar"><span id="estudio-total-bar" style="background:var(--blue); width:0%;"></span></div>
         </div>
         <div id="estudio-modules"></div>`;
+      bindPomodoroHandlers();
 
       const done = UNITS.filter(u => state.checklist[u.id]).length;
       document.getElementById("estudio-total").textContent = done + " / " + UNITS.length;
@@ -993,9 +1145,17 @@
           const row = document.createElement("div");
           row.className = "list-row";
           const isDone = !!state.checklist[u.id];
+          const hasNote = !!state.unitNotes[u.id];
           row.innerHTML = `<span class="txt">${u.title}</span>
+            <button type="button" class="food-del note-toggle-btn ${hasNote?'has-note':''}" data-unit="${u.id}" title="Nota rápida" aria-label="${hasNote?'Editar':'Añadir'} nota rápida en '${escapeHtml(u.title)}'">🗒</button>
             <button type="button" class="check ${isDone?'done':''}" data-unit="${u.id}" aria-pressed="${isDone}" aria-label="Marcar '${escapeHtml(u.title)}' como ${isDone?'pendiente':'completada'}">${isDone?'✓':''}</button>`;
           card.appendChild(row);
+          const noteHTML = unitNoteRowHTML(u.id);
+          if(noteHTML){
+            const noteEl = document.createElement("div");
+            noteEl.innerHTML = noteHTML;
+            card.appendChild(noteEl.firstElementChild);
+          }
         });
         block.appendChild(card);
         wrap.appendChild(block);
@@ -1011,6 +1171,7 @@
           renderInicio();
         });
       });
+      bindUnitNoteHandlers(wrap);
       return;
     }
 
@@ -1019,6 +1180,7 @@
     const doneUnits = state.studyModules.reduce((s,m)=>s+m.units.filter(u=>u.done).length,0);
 
     let html = `
+      ${pomodoroCardHTML()}
       <div class="card">
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <div>
@@ -1066,11 +1228,14 @@
             <button class="food-del" data-action="cancel-unit" title="Cancelar" aria-label="Cancelar edición">✕</button>
           </div>`;
         } else {
+          const hasNote = !!state.unitNotes[u.id];
           html += `<div class="list-row"><span class="txt">${escapeHtml(u.title)}</span>
+            <button type="button" class="food-del note-toggle-btn ${hasNote?'has-note':''}" data-unit="${u.id}" title="Nota rápida" aria-label="${hasNote?'Editar':'Añadir'} nota rápida en '${escapeHtml(u.title)}'">🗒</button>
             <button type="button" class="check ${u.done?'done':''}" data-mi="${mi}" data-ui="${ui}" aria-pressed="${u.done}" aria-label="Marcar '${escapeHtml(u.title)}' como ${u.done?'pendiente':'completada'}">${u.done?'✓':''}</button>
             <button class="food-del" data-mi="${mi}" data-ui="${ui}" data-action="edit-unit" title="Editar" aria-label="Editar '${escapeHtml(u.title)}'">✎</button>
             <button class="food-del" data-mi="${mi}" data-ui="${ui}" data-action="del-unit" title="Eliminar" aria-label="Eliminar '${escapeHtml(u.title)}'">✕</button>
           </div>`;
+          html += unitNoteRowHTML(u.id);
         }
       });
       if(mod.units.length===0){ html += `<div class="empty">Todavía no hay unidades en este curso.</div>`; }
@@ -1083,6 +1248,7 @@
     });
 
     body.innerHTML = html;
+    bindPomodoroHandlers();
 
     document.getElementById("add-module-btn").addEventListener("click", async ()=>{
       const input = document.getElementById("new-module-name");
@@ -1166,8 +1332,13 @@
     body.querySelectorAll('[data-action="del-unit"]').forEach(btn=>{
       bindConfirmDelete(btn, async ()=>{
         const mi = parseInt(btn.dataset.mi,10), ui = parseInt(btn.dataset.ui,10);
+        const removedId = state.studyModules[mi].units[ui].id;
         state.studyModules[mi].units.splice(ui,1);
         editingUnitKey = null; // los índices de otras unidades pueden haberse desplazado
+        if(removedId in state.unitNotes){
+          delete state.unitNotes[removedId];
+          await saveJSON(pk("unitNotes"), state.unitNotes);
+        }
         await saveJSON(pk("studyModules"), state.studyModules);
         renderEstudio();
         renderInicio();
@@ -1195,13 +1366,19 @@
         renderInicio();
       });
     });
+    bindUnitNoteHandlers(body);
 
     body.querySelectorAll(".del-module-btn").forEach(btn=>{
       bindConfirmDelete(btn, async ()=>{
         const mi = parseInt(btn.dataset.mi,10);
+        let notesChanged = false;
+        state.studyModules[mi].units.forEach(u=>{
+          if(u.id in state.unitNotes){ delete state.unitNotes[u.id]; notesChanged = true; }
+        });
         state.studyModules.splice(mi,1);
         editingUnitKey = null; // los índices de otros módulos pueden haberse desplazado
         editingModuleIndex = null;
+        if(notesChanged) await saveJSON(pk("unitNotes"), state.unitNotes);
         await saveJSON(pk("studyModules"), state.studyModules);
         renderEstudio();
         renderInicio();
@@ -1293,6 +1470,28 @@
     });
   }
 
+  // El número de series delante de la "x" en el esquema de reps ("4 x 8-10" -> 4). Si no se
+  // puede interpretar (formato inesperado), asume 1 serie en vez de romper el render.
+  function parseSetsCount(reps){
+    const m = /^(\d+)\s*x/i.exec(String(reps).trim());
+    return m ? parseInt(m[1],10) : 1;
+  }
+  // Extrae un número del texto libre de peso ("22kg", "22,5 kg", "22") para el historial de 1RM.
+  // Si no hay ningún número reconocible, no se puede graficar ese registro.
+  function parseWeightNumber(text){
+    const m = /(\d+(?:[.,]\d+)?)/.exec(String(text));
+    return m ? parseFloat(m[1].replace(',', '.')) : null;
+  }
+  function setsKeyFor(name){ return isoDate(todayDate())+"_"+selectedDay+"-"+name; }
+
+  async function upsertStrengthLog(exercise, weight){
+    const today = isoDate(todayDate());
+    const existing = state.strengthLog.find(e=>e.date===today && e.exercise===exercise);
+    if(existing) existing.weight = weight;
+    else state.strengthLog.push({id:"s"+Date.now(), date:today, exercise, weight});
+    await saveJSON(pk("strengthLog"), state.strengthLog);
+  }
+
   function renderEntrenoSession(){
     const sched = activeSchedule();
     if(!sched) return;
@@ -1317,10 +1516,20 @@
     sess.exs.forEach(([name,reps,peso])=>{
       const key = selectedDay + "-" + name;
       const stored = state.gymLog[key] || "";
-      html += `<div class="exrow">
-        <div class="name">${name}</div>
+      const setsCount = parseSetsCount(reps);
+      const setsKey = setsKeyFor(name);
+      const done = state.setsLog[setsKey] || [];
+      const allDone = done.length === setsCount && done.every(Boolean);
+      let dots = "";
+      for(let i=0;i<setsCount;i++){
+        const isDone = !!done[i];
+        dots += `<button type="button" class="set-dot ${isDone?'done':''}" data-sets-key="${setsKey}" data-idx="${i}" data-count="${setsCount}" aria-pressed="${isDone}" aria-label="Serie ${i+1} de ${setsCount} de ${escapeHtml(name)}">${i+1}</button>`;
+      }
+      html += `<div class="exrow ${allDone?'all-sets-done':''}">
+        <div class="name">${name}${allDone ? ' ✓' : ''}</div>
         <div class="meta">${reps}${peso ? " · sugerido "+peso : ""}</div>
-        <input type="text" data-key="${key}" placeholder="Peso usado hoy" aria-label="Peso usado hoy en ${escapeHtml(name)}" value="${escapeHtml(stored)}">
+        <input type="text" data-key="${key}" data-exercise="${escapeHtml(name)}" placeholder="Peso usado hoy" aria-label="Peso usado hoy en ${escapeHtml(name)}" value="${escapeHtml(stored)}">
+        <div class="sets-row">${dots}</div>
       </div>`;
     });
     card.innerHTML = html;
@@ -1328,7 +1537,26 @@
       inp.addEventListener("change", async ()=>{
         state.gymLog[inp.dataset.key] = inp.value;
         await saveJSON(pk("gymLog"), state.gymLog);
-        if(inp.value.trim()) await recordTrainingDay();
+        if(inp.value.trim()){
+          await recordTrainingDay();
+          const num = parseWeightNumber(inp.value);
+          if(num !== null) await upsertStrengthLog(inp.dataset.exercise, num);
+        }
+        renderInicio();
+        renderStrengthHistory();
+      });
+    });
+    card.querySelectorAll(".set-dot").forEach(btn=>{
+      btn.addEventListener("click", async ()=>{
+        const setsKey = btn.dataset.setsKey;
+        const count = parseInt(btn.dataset.count,10);
+        const idx = parseInt(btn.dataset.idx,10);
+        const arr = state.setsLog[setsKey] ? [...state.setsLog[setsKey]] : new Array(count).fill(false);
+        arr[idx] = !arr[idx];
+        state.setsLog[setsKey] = arr;
+        await saveJSON(pk("setsLog"), state.setsLog);
+        if(arr.some(Boolean)) await recordTrainingDay(); // marcar una serie ya cuenta como haber entrenado hoy
+        renderEntrenoSession();
         renderInicio();
       });
     });
@@ -1355,6 +1583,134 @@
     const latest = state.weightLog[state.weightLog.length-1];
     document.getElementById("weight-latest").textContent = fmtDecimal(latest.kg) + " kg";
     document.getElementById("weight-latest-date").textContent = latest.note || latest.date || "último registro";
+  }
+
+  /* ---- Historial de 1RM / progreso por ejercicio ---- */
+  let selectedStrengthExercise = null;
+
+  function strengthChartSVG(points){
+    if(points.length < 2){
+      return `<div style="text-align:center; padding:14px 0; color:var(--ink-soft); font-size:12.5px;">Necesitas al menos 2 registros de este ejercicio para ver la evolución.</div>`;
+    }
+    const W = 300, H = 80, PAD = 8;
+    const weights = points.map(p=>p.weight);
+    const min = Math.min(...weights), max = Math.max(...weights);
+    const range = (max - min) || 1;
+    const stepX = points.length > 1 ? (W - PAD*2) / (points.length - 1) : 0;
+    const coords = points.map((p,i)=>{
+      const x = PAD + i*stepX;
+      const y = H - PAD - ((p.weight - min) / range) * (H - PAD*2);
+      return [x,y];
+    });
+    const pathD = coords.map((c,i)=> (i===0?'M':'L')+c[0].toFixed(1)+","+c[1].toFixed(1)).join(" ");
+    const dots = coords.map(([x,y])=>`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="var(--blue)"></circle>`).join("");
+    return `<svg viewBox="0 0 ${W} ${H}" style="width:100%; height:80px; display:block;" role="img" aria-label="Gráfico de evolución del peso levantado">
+      <path d="${pathD}" fill="none" stroke="var(--blue)" stroke-width="2"></path>
+      ${dots}
+    </svg>`;
+  }
+
+  function renderStrengthHistory(){
+    const titleEl = document.getElementById("strength-history-title");
+    const card = document.getElementById("strength-history-card");
+    if(!titleEl || !card) return;
+    const exercises = [...new Set(state.strengthLog.map(e=>e.exercise))];
+    if(exercises.length === 0){
+      titleEl.style.display = "none";
+      card.style.display = "none";
+      card.innerHTML = "";
+      return;
+    }
+    titleEl.style.display = "block";
+    card.style.display = "block";
+    if(!selectedStrengthExercise || !exercises.includes(selectedStrengthExercise)){
+      const byRecent = [...state.strengthLog].sort((a,b)=> a.date < b.date ? 1 : -1);
+      selectedStrengthExercise = byRecent[0].exercise;
+    }
+    const points = state.strengthLog
+      .filter(e=>e.exercise === selectedStrengthExercise)
+      .sort((a,b)=> a.date < b.date ? -1 : 1)
+      .slice(-10); // últimos 10 puntos: suficiente para ver la tendencia sin saturar el gráfico
+    const latest = points[points.length-1];
+    const first = points[0];
+    const delta = Math.round((latest.weight - first.weight)*10)/10;
+    const deltaLabel = points.length < 2 ? "" :
+      delta === 0 ? "Sin cambios desde el primer registro" :
+      `${delta>0?'+':''}${fmtDecimal(delta)} kg desde el primer registro`;
+    const latestDateLabel = latest.date === isoDate(todayDate()) ? "hoy" : parseISODate(latest.date).toLocaleDateString('es-ES',{day:'numeric',month:'long'});
+    card.innerHTML = `
+      <select id="strength-exercise-select" class="select-plain" aria-label="Elegir ejercicio">
+        ${exercises.map(ex=>`<option value="${escapeHtml(ex)}" ${ex===selectedStrengthExercise?'selected':''}>${escapeHtml(ex)}</option>`).join("")}
+      </select>
+      <div style="display:flex; align-items:baseline; gap:8px; margin-top:12px;">
+        <div style="font-size:26px; font-weight:800;">${fmtDecimal(latest.weight)} kg</div>
+        <div style="font-size:12.5px; color:var(--ink-soft);">${latestDateLabel}</div>
+      </div>
+      ${deltaLabel ? `<div style="font-size:12px; color:${delta>0?'var(--green)':delta<0?'var(--brown)':'var(--ink-soft)'}; margin-top:2px;">${deltaLabel}</div>` : ""}
+      <div style="margin-top:10px;">${strengthChartSVG(points)}</div>
+    `;
+    document.getElementById("strength-exercise-select").addEventListener("change", (e)=>{
+      selectedStrengthExercise = e.target.value;
+      renderStrengthHistory();
+    });
+  }
+
+  /* ---- Alerta de deload ---- */
+  // Reutiliza trainingDays (ya trackeado para la racha) — no hace falta ningún dato nuevo
+  // aparte de la fecha de confirmación del aviso, para poder silenciarlo un tiempo.
+  const DELOAD_MIN_DAYS_PER_WEEK = 3; // umbral de "semana de entreno serio", no solo una sesión suelta
+  const DELOAD_WEEKS_THRESHOLD = 6;    // semanas consecutivas antes de sugerir descarga
+  const DELOAD_SNOOZE_DAYS = 42;       // 6 semanas de silencio tras confirmar el aviso
+
+  function isoWeekMonday(date){
+    const d = new Date(date);
+    const dow = (d.getDay() + 6) % 7; // 0 = lunes
+    d.setDate(d.getDate() - dow);
+    d.setHours(0,0,0,0);
+    return d;
+  }
+  function trainingDaysInWeek(mondayDate){
+    const end = addDays(mondayDate, 6);
+    return state.trainingDays.filter(ds=>{
+      const d = parseISODate(ds);
+      return d >= mondayDate && d <= end;
+    }).length;
+  }
+  // Si la semana en curso todavía no llega al mínimo, no se considera "rota": se ignora y se
+  // sigue contando desde la semana anterior (misma lógica que la racha de hábitos).
+  function consecutiveTrainingWeeks(){
+    let cursor = isoWeekMonday(todayDate());
+    if(trainingDaysInWeek(cursor) < DELOAD_MIN_DAYS_PER_WEEK) cursor = addDays(cursor, -7);
+    let weeks = 0;
+    while(trainingDaysInWeek(cursor) >= DELOAD_MIN_DAYS_PER_WEEK){
+      weeks++;
+      cursor = addDays(cursor, -7);
+    }
+    return weeks;
+  }
+  function renderDeloadAlert(){
+    const el = document.getElementById("deload-alert-section");
+    if(!el) return;
+    const weeks = consecutiveTrainingWeeks();
+    const snoozed = state.deloadAckDate && daysDiff(parseISODate(state.deloadAckDate), todayDate()) < DELOAD_SNOOZE_DAYS;
+    if(weeks < DELOAD_WEEKS_THRESHOLD || snoozed){
+      el.style.display = "none";
+      el.innerHTML = "";
+      return;
+    }
+    el.style.display = "block";
+    el.innerHTML = `
+      <div class="card" style="background:var(--gold-soft);">
+        <p style="margin:0 0 8px; font-size:13.5px; color:var(--ink); line-height:1.45;">
+          <b>Llevas ${weeks} semanas seguidas entrenando de forma constante.</b> Puede ser buen momento para una semana de descarga (deload): mismos ejercicios, con un 40-50% menos de peso o de series, para que el cuerpo recupere antes de seguir progresando.
+        </p>
+        <div class="btnrow"><button class="btn ghost" id="deload-ack-btn">Entendido, la próxima semana descargo</button></div>
+      </div>`;
+    document.getElementById("deload-ack-btn").addEventListener("click", async ()=>{
+      state.deloadAckDate = isoDate(todayDate());
+      await saveJSON(pk("deloadAckDate"), state.deloadAckDate);
+      renderDeloadAlert();
+    });
   }
 
   function renderEntreno(){
@@ -1402,6 +1758,8 @@
         renderInicio();
       });
       renderWeightHistory();
+      renderStrengthHistory();
+      renderDeloadAlert();
       return;
     }
 
@@ -1421,6 +1779,8 @@
     }
 
     renderWeightHistory();
+    renderStrengthHistory();
+    renderDeloadAlert();
   }
 
   /* ============ DIETA ============ */
