@@ -163,6 +163,16 @@
   /* Progress bar */
   .pbar{ height:8px; background:var(--grey-soft); border-radius:99px; overflow:hidden; margin-top:8px;}
   .pbar>span{ display:block; height:100%; border-radius:99px; transition:width .4s ease; }
+  .pbar-sm{ height:4px; background:var(--grey-soft); border-radius:99px; overflow:hidden; margin:5px 4px 12px; }
+  .pbar-sm>span{ display:block; height:100%; border-radius:99px; transition:width .4s ease; }
+
+  .streak-banner{
+    display:flex; align-items:center; gap:10px; background:var(--gold-soft); border-radius:14px;
+    padding:12px 14px; margin-top:14px;
+  }
+  .streak-banner .flame{ font-size:24px; flex:none; }
+  .streak-banner .txt{ font-size:13.5px; color:var(--ink); line-height:1.35; }
+  .streak-banner b{ color:var(--brown); }
 
   /* Pills / tags */
   .pill{
@@ -256,6 +266,8 @@
   }
   .seg button.active.ingreso{ background:var(--green); color:#fff; }
   .seg button.active.gasto{ background:var(--brown); color:#fff; }
+  .seg button.active.fijo{ background:var(--brown); color:#fff; }
+  .seg button.active.variable{ background:var(--grey); color:#fff; }
 
   .balance-big{ font-size:30px; font-weight:800; letter-spacing:-0.02em; }
   .expense-list .list-row .amt{ font-weight:700; font-size:14px; }
@@ -401,6 +413,8 @@
         </div>
       </div>
 
+      <div id="streak-section" style="display:none;"></div>
+
       <div id="cycle-card-section"></div>
 
       <div id="golden-rule-section">
@@ -478,6 +492,7 @@
           <span>Ingresos: <b id="gastos-ing" style="color:var(--green);">0 €</b></span>
           <span>Gastos: <b id="gastos-gas" style="color:var(--brown);">0 €</b></span>
         </div>
+        <div id="gastos-categorias" style="display:none; justify-content:center; gap:18px; margin-top:4px; font-size:11.5px; color:var(--ink-soft);"></div>
       </div>
 
       <p class="section-title">Meta de ahorro</p>
@@ -487,6 +502,10 @@
         <div class="seg" id="tipo-seg">
           <button data-tipo="ingreso" class="active ingreso" aria-pressed="true">Ingreso</button>
           <button data-tipo="gasto" class="gasto" aria-pressed="false">Gasto</button>
+        </div>
+        <div class="seg" id="categoria-seg" style="display:none; margin-top:8px;">
+          <button data-categoria="variable" class="active variable" aria-pressed="true">Variable</button>
+          <button data-categoria="fijo" class="fijo" aria-pressed="false">Fijo</button>
         </div>
         <div class="form-row">
           <input type="text" name="label" id="gasto-label" placeholder="Concepto" aria-label="Concepto del movimiento">
@@ -714,7 +733,7 @@
     checklist: {},      // {unitId: true/false}  (Santi)
     gymLog: {},          // {"day-exname": "kg used"}
     weightLog: [],
-    expenses: [],        // [{id,label,amount,tipo,ts}]
+    expenses: [],        // [{id,label,amount,tipo,ym,ts,categoria:"fijo"|"variable"|null}]  (categoria solo aplica a tipo:"gasto")
     studyModules: [],     // [{id,name,color,units:[{id,title,done}]}]  (perfiles distintos de Santi)
     gymSetup: null,       // {objetivo,dias,nivel,schedule}  (perfiles distintos de Santi)
     dietSetup: null,      // {peso,altura,edad,sexo,actividad,objetivo,kcal,proteinG,fatG,carbsG}
@@ -722,6 +741,8 @@
     savingsGoal: null,     // {label,target,deadline}
     cycleSettings: { avgCycleLength: 28, avgPeriodLength: 5 }, // (solo perfil Noelia)
     cycleLog: [],           // [{id,startDate:"YYYY-MM-DD",endDate:"YYYY-MM-DD"|null}]  (solo perfil Noelia)
+    trainingDays: [],        // ["YYYY-MM-DD", ...] días con al menos un peso registrado en Entreno
+    studyDays: [],           // ["YYYY-MM-DD", ...] días con al menos una unidad marcada como hecha
   };
 
   async function loadState(){
@@ -743,6 +764,8 @@
     state.savingsGoal = await loadJSON(pk("savingsGoal"), null);
     state.cycleSettings = await loadJSON(pk("cycleSettings"), { avgCycleLength: 28, avgPeriodLength: 5 });
     state.cycleLog = await loadJSON(pk("cycleLog"), []);
+    state.trainingDays = await loadJSON(pk("trainingDays"), []);
+    state.studyDays = await loadJSON(pk("studyDays"), []);
   }
 
   function renderAll(){
@@ -842,6 +865,18 @@
     requestAnimationFrame(()=>{ ring.style.strokeDashoffset = offset; });
   }
 
+  function renderStreakSection(){
+    const el = document.getElementById("streak-section");
+    const streak = currentStreak();
+    if(streak < 1){ el.style.display = "none"; el.innerHTML = ""; return; }
+    el.style.display = "block";
+    el.innerHTML = `
+      <div class="streak-banner">
+        <span class="flame">🔥</span>
+        <span class="txt"><b>${streak} día${streak===1?'':'s'} seguido${streak===1?'':'s'}</b> cumpliendo gimnasio + estudio</span>
+      </div>`;
+  }
+
   function todayLabel(){
     const d = new Date();
     const opts = {weekday:'long', day:'numeric', month:'long'};
@@ -854,6 +889,7 @@
     renderPhase();
     document.getElementById("golden-rule-section").style.display = activeProfile === "santi" ? "block" : "none";
     renderCicloCardSection();
+    renderStreakSection();
 
     let done, total;
     if(activeProfile === "santi"){
@@ -949,7 +985,8 @@
         const modDone = units.filter(u=>state.checklist[u.id]).length;
 
         const block = document.createElement("div");
-        block.innerHTML = `<p class="section-title" style="color:${mod.color};">${mod.name} <span style="color:var(--ink-soft); font-weight:600;">· ${modDone}/${units.length}</span></p>`;
+        block.innerHTML = `<p class="section-title" style="color:${mod.color};">${mod.name} <span style="color:var(--ink-soft); font-weight:600;">· ${modDone}/${units.length}</span></p>
+          <div class="pbar-sm"><span style="background:${mod.color}; width:${units.length ? Math.round(modDone/units.length*100) : 0}%;"></span></div>`;
         const card = document.createElement("div");
         card.className = "card";
         units.forEach(u=>{
@@ -969,6 +1006,7 @@
           const id = el.dataset.unit;
           state.checklist[id] = !state.checklist[id];
           await saveJSON(pk("checklist"), state.checklist);
+          if(state.checklist[id]) await recordStudyDay();
           renderEstudio();
           renderInicio();
         });
@@ -1009,13 +1047,14 @@
           <button class="food-del" data-action="cancel-module" title="Cancelar" aria-label="Cancelar edición del nombre">✕</button>
         </div>`;
       } else {
-        html += `<div style="display:flex; justify-content:space-between; align-items:center; margin:18px 4px 8px;">
+        html += `<div style="display:flex; justify-content:space-between; align-items:center; margin:18px 4px 0;">
           <p class="section-title" style="margin:0; color:${mod.color};">${escapeHtml(mod.name)} <span style="color:var(--ink-soft); font-weight:600;">· ${modDone}/${mod.units.length}</span></p>
           <div style="display:flex; gap:6px; flex:none;">
             <button class="food-del" data-mi="${mi}" data-action="edit-module" title="Renombrar" aria-label="Renombrar curso '${escapeHtml(mod.name)}'">✎</button>
             <button class="food-del del-module-btn" data-mi="${mi}" title="Eliminar curso" aria-label="Eliminar curso '${escapeHtml(mod.name)}'">✕</button>
           </div>
-        </div>`;
+        </div>
+        <div class="pbar-sm"><span style="background:${mod.color}; width:${mod.units.length ? Math.round(modDone/mod.units.length*100) : 0}%;"></span></div>`;
       }
       html += `<div class="card">`;
       mod.units.forEach((u,ui)=>{
@@ -1148,8 +1187,10 @@
     body.querySelectorAll(".check").forEach(el=>{
       el.addEventListener("click", async ()=>{
         const mi = parseInt(el.dataset.mi,10), ui = parseInt(el.dataset.ui,10);
-        state.studyModules[mi].units[ui].done = !state.studyModules[mi].units[ui].done;
+        const unit = state.studyModules[mi].units[ui];
+        unit.done = !unit.done;
         await saveJSON(pk("studyModules"), state.studyModules);
+        if(unit.done) await recordStudyDay();
         renderEstudio();
         renderInicio();
       });
@@ -1287,6 +1328,8 @@
       inp.addEventListener("change", async ()=>{
         state.gymLog[inp.dataset.key] = inp.value;
         await saveJSON(pk("gymLog"), state.gymLog);
+        if(inp.value.trim()) await recordTrainingDay();
+        renderInicio();
       });
     });
   }
@@ -1918,13 +1961,31 @@
     document.getElementById("gastos-month-next").disabled = isCurrentMonth;
     document.getElementById("gastos-month-today-btn").style.display = isCurrentMonth ? "none" : "block";
 
-    let ing=0, gas=0;
-    monthItems.forEach(e=> e.tipo==="ingreso" ? ing+=e.amount : gas+=e.amount);
+    let ing=0, gas=0, gasFijo=0, gasVariable=0;
+    monthItems.forEach(e=>{
+      if(e.tipo==="ingreso"){ ing+=e.amount; return; }
+      gas+=e.amount;
+      if(e.categoria==="fijo") gasFijo+=e.amount;
+      else if(e.categoria==="variable") gasVariable+=e.amount;
+    });
     document.getElementById("gastos-ing").textContent = fmtEUR(ing);
     document.getElementById("gastos-gas").textContent = fmtEUR(gas);
     const balEl = document.getElementById("gastos-balance");
     balEl.textContent = fmtEUR(ing-gas);
     balEl.style.color = (ing-gas) < 0 ? "var(--brown)" : "var(--navy)";
+
+    // Solo se muestra el desglose fijo/variable si hay al menos un gasto categorizado este mes
+    // (los movimientos antiguos, de antes de que existiera esta distinción, no tienen categoria).
+    const catEl = document.getElementById("gastos-categorias");
+    if(gasFijo + gasVariable > 0){
+      catEl.style.display = "flex";
+      catEl.innerHTML = `
+        <span>Fijos: <b style="color:var(--brown);">${fmtEUR(gasFijo)}</b></span>
+        <span>Variables: <b style="color:var(--grey);">${fmtEUR(gasVariable)}</b></span>`;
+    } else {
+      catEl.style.display = "none";
+      catEl.innerHTML = "";
+    }
 
     renderSavingsGoal();
 
@@ -1934,7 +1995,7 @@
     } else {
       list.innerHTML = monthItems.map(e=>`
         <div class="list-row">
-          <span class="txt">${escapeHtml(e.label) || (e.tipo==='ingreso'?'Ingreso':'Gasto')}</span>
+          <span class="txt">${escapeHtml(e.label) || (e.tipo==='ingreso'?'Ingreso':'Gasto')}${e.categoria ? ` <span class="pill" style="background:${e.categoria==='fijo'?'var(--brown-soft)':'var(--grey-soft)'}; color:${e.categoria==='fijo'?'var(--brown)':'var(--grey)'};">${e.categoria==='fijo'?'Fijo':'Variable'}</span>` : ""}</span>
           <span class="amt ${e.tipo==='ingreso'?'pos':'neg'}">${e.tipo==='ingreso'?'+':'-'}${e.amount.toLocaleString('es-ES')} €</span>
           <button class="food-del" data-id="${e.id}" title="Eliminar" aria-label="Eliminar movimiento: ${escapeHtml(e.label) || (e.tipo==='ingreso'?'Ingreso':'Gasto')}">✕</button>
         </div>
@@ -2508,6 +2569,42 @@
     renderInicio();
   }
 
+  /* ============ RACHA (gym + estudio) ============ */
+  // Reutiliza isoDate/todayDate/addDays definidos más arriba, en la sección CICLO.
+  function recordDayIn(arrKey, dateStr){
+    const arr = state[arrKey];
+    if(arr.includes(dateStr)) return false;
+    arr.push(dateStr);
+    arr.sort();
+    if(arr.length > 120) arr.splice(0, arr.length - 120); // ~4 meses de margen es de sobra para calcular la racha
+    return true;
+  }
+  async function recordTrainingDay(){
+    if(recordDayIn("trainingDays", isoDate(todayDate()))){
+      await saveJSON(pk("trainingDays"), state.trainingDays);
+    }
+  }
+  async function recordStudyDay(){
+    if(recordDayIn("studyDays", isoDate(todayDate()))){
+      await saveJSON(pk("studyDays"), state.studyDays);
+    }
+  }
+  // Racha = días consecutivos con AMBOS hábitos cumplidos (gym y estudio), como pide la "regla de oro".
+  // Si hoy todavía no está completo no rompe la racha: se sigue contando desde ayer hacia atrás.
+  function currentStreak(){
+    const trained = new Set(state.trainingDays);
+    const studied = new Set(state.studyDays);
+    const bothDone = d => trained.has(isoDate(d)) && studied.has(isoDate(d));
+    let cursor = todayDate();
+    if(!bothDone(cursor)) cursor = addDays(cursor, -1);
+    let streak = 0;
+    while(bothDone(cursor)){
+      streak++;
+      cursor = addDays(cursor, -1);
+    }
+    return streak;
+  }
+
   /* ============ TABS ============ */
   function activateTab(btn){
     const tabs = Array.from(document.querySelectorAll(".tab"));
@@ -2653,6 +2750,7 @@
     });
 
     let tipoSel = "ingreso";
+    let categoriaSel = "variable";
     document.querySelectorAll("#tipo-seg button").forEach(b=>{
       b.addEventListener("click", ()=>{
         document.querySelectorAll("#tipo-seg button").forEach(x=>{
@@ -2662,6 +2760,19 @@
         b.classList.add("active");
         b.setAttribute("aria-pressed", "true");
         tipoSel = b.dataset.tipo;
+        // La distinción fijo/variable solo tiene sentido para gastos, no para ingresos.
+        document.getElementById("categoria-seg").style.display = tipoSel === "gasto" ? "flex" : "none";
+      });
+    });
+    document.querySelectorAll("#categoria-seg button").forEach(b=>{
+      b.addEventListener("click", ()=>{
+        document.querySelectorAll("#categoria-seg button").forEach(x=>{
+          x.classList.remove("active");
+          x.setAttribute("aria-pressed", "false");
+        });
+        b.classList.add("active");
+        b.setAttribute("aria-pressed", "true");
+        categoriaSel = b.dataset.categoria;
       });
     });
 
@@ -2673,6 +2784,7 @@
       state.expenses.push({
         id: Date.now(),
         label, amount, tipo: tipoSel,
+        categoria: tipoSel === "gasto" ? categoriaSel : null,
         ym: ymOf(gastosViewDate),
         ts: Date.now(),
       });
