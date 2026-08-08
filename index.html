@@ -177,6 +177,31 @@
   .pomodoro-time{ font-size:44px; font-weight:800; text-align:center; letter-spacing:.02em; margin:10px 0 4px; font-variant-numeric:tabular-nums; }
   .pomodoro-count{ text-align:center; font-size:12px; color:var(--ink-soft); margin-bottom:4px; }
 
+  /* Progreso semanal (Inicio) */
+  .week-habit-row{ display:grid; grid-template-columns:56px repeat(7,1fr); align-items:center; gap:4px; padding:5px 0; }
+  .week-habit-label{ font-size:12px; color:var(--ink-soft); font-weight:600; white-space:nowrap; }
+  .week-dot{ width:20px; height:20px; border-radius:50%; background:var(--grey-soft); margin:0 auto; }
+  .week-dot.done.gym{ background:var(--green); }
+  .week-dot.done.study{ background:var(--blue); }
+  .week-dot.today{ box-shadow:0 0 0 2px var(--navy); }
+  .week-habit-dowrow{ display:grid; grid-template-columns:56px repeat(7,1fr); gap:4px; margin-top:2px; }
+  .week-habit-dowrow span{ text-align:center; font-size:10.5px; color:var(--ink-soft); font-weight:600; }
+
+  /* Próximo hito (Inicio) */
+  .milestone-hero{
+    display:flex; align-items:center; gap:12px; background:var(--navy); border-radius:16px;
+    padding:14px 16px; color:#fff;
+  }
+  .milestone-hero .ic{ font-size:28px; flex:none; }
+  .milestone-hero .txt{ flex:1; min-width:0; }
+  .milestone-hero .eyebrow{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--gold); margin:0; }
+  .milestone-hero h3{ margin:2px 0 0; font-size:15.5px; }
+  .milestone-hero .when{ margin:2px 0 0; font-size:12.5px; color:rgba(255,255,255,0.75); }
+  .milestone-row{ display:flex; align-items:center; gap:10px; }
+  .milestone-row .ic{ font-size:18px; flex:none; }
+  .milestone-row .txt{ flex:1; min-width:0; }
+  .milestone-row .past{ opacity:0.55; }
+
   .shopping-group{ margin-bottom:6px; }
   .shopping-group-title{ font-size:11.5px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; margin:14px 4px 2px; }
   .shopping-group:first-child .shopping-group-title{ margin-top:2px; }
@@ -460,6 +485,10 @@
       </div>
 
       <div id="streak-section" style="display:none;"></div>
+
+      <div id="weekly-progress-section"></div>
+
+      <div id="milestone-section"></div>
 
       <div id="cycle-card-section"></div>
 
@@ -799,6 +828,7 @@
     deloadAckDate: null,     // "YYYY-MM-DD" última vez que se confirmó el aviso de deload (silencia el aviso 6 semanas)
     shoppingListChecked: {}, // {itemKey: true}  itemKey = nombre canónico de FOOD_DB o texto normalizado sin reconocer
     shoppingListExtra: [],   // [{id,text,checked}]  artículos añadidos a mano a la lista de la compra
+    milestones: [],          // [{id,title,date:"YYYY-MM-DD",type:"examen"|"objetivo"|"otro",description}]  hitos de Inicio
   };
 
   async function loadState(){
@@ -828,6 +858,7 @@
     state.deloadAckDate = await loadJSON(pk("deloadAckDate"), null);
     state.shoppingListChecked = await loadJSON(pk("shoppingListChecked"), {});
     state.shoppingListExtra = await loadJSON(pk("shoppingListExtra"), []);
+    state.milestones = await loadJSON(pk("milestones"), []);
   }
 
   function renderAll(){
@@ -871,6 +902,9 @@
     editingCycleEntryId = null;
     pendingLogDate = null;
     selectedStrengthExercise = null;
+    editingMilestoneId = null;
+    milestonesExpanded = false;
+    addingMilestone = false;
     renderProfileSwitch();
     updateHeader();
     renderAll();
@@ -941,6 +975,215 @@
       </div>`;
   }
 
+  // Reutiliza exactamente el mismo criterio que weeklyFoodTotals() (Dieta, Bloque 3):
+  // últimos 7 días naturales terminando hoy, no una semana de calendario que reinicia en lunes.
+  function weeklyHabitDays(){
+    const days = [];
+    const today = todayDate();
+    for(let i=6; i>=0; i--){
+      const d = addDays(today, -i);
+      const key = isoDate(d);
+      days.push({date:d, key, trained: state.trainingDays.includes(key), studied: state.studyDays.includes(key)});
+    }
+    return days;
+  }
+  function renderWeeklyProgress(){
+    const el = document.getElementById("weekly-progress-section");
+    if(!el) return;
+    const days = weeklyHabitDays();
+    const todayK = isoDate(todayDate());
+    const dowLetters = ["D","L","M","X","J","V","S"];
+    const gymDots = days.map(d=>`<div class="week-dot ${d.trained?'done gym':''} ${d.key===todayK?'today':''}" title="${d.date.toLocaleDateString('es-ES',{day:'numeric',month:'long'})}"></div>`).join("");
+    const studyDots = days.map(d=>`<div class="week-dot ${d.studied?'done study':''} ${d.key===todayK?'today':''}" title="${d.date.toLocaleDateString('es-ES',{day:'numeric',month:'long'})}"></div>`).join("");
+    const dowRow = days.map(d=>`<span>${dowLetters[d.date.getDay()]}</span>`).join("");
+    el.innerHTML = `
+      <p class="section-title">Esta semana</p>
+      <div class="card">
+        <div class="week-habit-row"><span class="week-habit-label">🏋️ Gym</span>${gymDots}</div>
+        <div class="week-habit-row"><span class="week-habit-label">📚 Estudio</span>${studyDots}</div>
+        <div class="week-habit-dowrow"><span></span>${dowRow}</div>
+      </div>`;
+  }
+
+  /* ---- Próximo hito ---- */
+  const MILESTONE_TYPES = {
+    examen: {label:"Examen", icon:"📝", color:"var(--blue)"},
+    objetivo: {label:"Objetivo", icon:"🎯", color:"var(--green)"},
+    otro: {label:"Otro", icon:"📌", color:"var(--brown)"},
+  };
+  let editingMilestoneId = null;
+  let milestonesExpanded = false;
+  let addingMilestone = false;
+
+  function sortedMilestones(){
+    return [...state.milestones].sort((a,b)=> a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+  }
+  function nextMilestone(){
+    const todayK = isoDate(todayDate());
+    return sortedMilestones().find(m => m.date >= todayK) || null;
+  }
+  function milestoneWhenLabel(dateStr){
+    const d = daysDiff(todayDate(), parseISODate(dateStr));
+    if(d === 0) return "Hoy";
+    if(d === 1) return "Mañana";
+    if(d > 1) return `En ${d} días`;
+    if(d === -1) return "Ayer";
+    return `Hace ${-d} días`;
+  }
+  function milestoneFormHTML(existing){
+    const m = existing || {title:"", date:"", type:"objetivo", description:""};
+    return `
+      <div class="field-group" style="margin-top:${existing===undefined?'0':'10px'};"><label>Título</label>
+        <input type="text" id="milestone-title" placeholder="Examen de Dietética, meta de 65kg..." value="${escapeHtml(m.title)}">
+      </div>
+      <div class="field-group"><label>Fecha</label>
+        <input type="date" id="milestone-date" value="${m.date}">
+      </div>
+      <div class="field-group"><label>Tipo</label>
+        <select id="milestone-type">
+          ${Object.entries(MILESTONE_TYPES).map(([k,t])=>`<option value="${k}" ${m.type===k?'selected':''}>${t.icon} ${t.label}</option>`).join("")}
+        </select>
+      </div>
+      <div class="field-group"><label>Descripción (opcional)</label>
+        <input type="text" id="milestone-description" placeholder="Detalles adicionales" value="${escapeHtml(m.description||"")}">
+      </div>`;
+  }
+  function milestoneSectionHTML(){
+    const next = nextMilestone();
+    const heroHTML = next ? `
+      <div class="milestone-hero">
+        <span class="ic">${MILESTONE_TYPES[next.type]?.icon || "📌"}</span>
+        <div class="txt">
+          <p class="eyebrow">Próximo hito</p>
+          <h3>${escapeHtml(next.title)}</h3>
+          <p class="when">${milestoneWhenLabel(next.date)} · ${parseISODate(next.date).toLocaleDateString('es-ES',{day:'numeric',month:'long'})}</p>
+        </div>
+      </div>` : `
+      <div class="card" style="text-align:center;">
+        <div style="font-size:26px;">🎯</div>
+        <p style="margin:6px 0 0; font-size:13px; color:var(--ink-soft);">No tienes ningún hito próximo.</p>
+      </div>`;
+
+    const list = sortedMilestones();
+    let manageHTML = "";
+    if(milestonesExpanded){
+      const todayK = isoDate(todayDate());
+      const rows = list.map(m=>{
+        if(editingMilestoneId === m.id){
+          return `<div class="list-row" style="flex-direction:column; align-items:stretch;">
+            ${milestoneFormHTML(m)}
+            <div class="btnrow">
+              <button class="btn ghost" data-action="save-milestone" data-id="${m.id}">Guardar</button>
+              <button class="btn ghost" data-action="cancel-milestone">Cancelar</button>
+            </div>
+          </div>`;
+        }
+        const type = MILESTONE_TYPES[m.type] || MILESTONE_TYPES.otro;
+        const isPast = m.date < todayK;
+        return `<div class="list-row milestone-row ${isPast?'past':''}">
+          <span class="ic">${type.icon}</span>
+          <span class="txt">${escapeHtml(m.title)}<span class="sub">${parseISODate(m.date).toLocaleDateString('es-ES',{day:'numeric',month:'long',year:'numeric'})}${m.description ? " · "+escapeHtml(m.description) : ""}</span></span>
+          <button class="food-del" data-action="edit-milestone" data-id="${m.id}" title="Editar" aria-label="Editar hito '${escapeHtml(m.title)}'">✎</button>
+          <button class="food-del" data-action="del-milestone" data-id="${m.id}" title="Eliminar" aria-label="Eliminar hito '${escapeHtml(m.title)}'">✕</button>
+        </div>`;
+      }).join("");
+      manageHTML = `
+        <div class="card" style="margin-top:10px;">
+          ${list.length ? rows : '<div class="empty">Todavía no has añadido ningún hito.</div>'}
+          ${addingMilestone ? `
+            <div style="margin-top:${list.length?'10px':'0'}; padding-top:${list.length?'10px':'0'}; border-top:${list.length?'0.5px solid var(--line)':'none'};">
+              ${milestoneFormHTML()}
+              <div class="btnrow">
+                <button class="btn primary-brown" data-action="add-milestone">Añadir hito</button>
+                <button class="btn ghost" data-action="cancel-milestone">Cancelar</button>
+              </div>
+            </div>` : `
+            <div class="btnrow" style="margin-top:${list.length?'10px':'0'};"><button class="btn ghost" id="milestone-new-btn">+ Añadir hito</button></div>`}
+        </div>`;
+    }
+
+    return `
+      <p class="section-title">Próximo hito</p>
+      ${heroHTML}
+      <div class="btnrow" style="margin-top:8px;"><button class="btn ghost" id="milestone-toggle-btn">${milestonesExpanded ? 'Ocultar hitos' : `Gestionar hitos${list.length ? ' ('+list.length+')' : ''}`}</button></div>
+      ${manageHTML}
+    `;
+  }
+  function renderMilestoneSection(){
+    const el = document.getElementById("milestone-section");
+    if(!el) return;
+    el.innerHTML = milestoneSectionHTML();
+
+    document.getElementById("milestone-toggle-btn").addEventListener("click", ()=>{
+      milestonesExpanded = !milestonesExpanded;
+      addingMilestone = false;
+      editingMilestoneId = null;
+      renderMilestoneSection();
+    });
+    const newBtn = document.getElementById("milestone-new-btn");
+    if(newBtn) newBtn.addEventListener("click", ()=>{
+      addingMilestone = true;
+      editingMilestoneId = null;
+      renderMilestoneSection();
+      document.getElementById("milestone-title").focus();
+    });
+    document.querySelectorAll('[data-action="edit-milestone"]').forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        editingMilestoneId = btn.dataset.id;
+        addingMilestone = false;
+        renderMilestoneSection();
+      });
+    });
+    document.querySelectorAll('[data-action="cancel-milestone"]').forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        editingMilestoneId = null;
+        addingMilestone = false;
+        renderMilestoneSection();
+      });
+    });
+    document.querySelectorAll('[data-action="del-milestone"]').forEach(btn=>{
+      bindConfirmDelete(btn, async ()=>{
+        state.milestones = state.milestones.filter(m=>m.id !== btn.dataset.id);
+        await saveJSON(pk("milestones"), state.milestones);
+        renderMilestoneSection();
+      });
+    });
+    const addBtn = document.querySelector('[data-action="add-milestone"]');
+    if(addBtn) addBtn.addEventListener("click", async ()=>{
+      const titleInput = document.getElementById("milestone-title");
+      const dateInput = document.getElementById("milestone-date");
+      const title = titleInput.value.trim();
+      if(!title) return flashInvalid(titleInput);
+      if(!dateInput.value) return flashInvalid(dateInput);
+      state.milestones.push({
+        id: "ms"+Date.now(),
+        title,
+        date: dateInput.value,
+        type: document.getElementById("milestone-type").value,
+        description: document.getElementById("milestone-description").value.trim(),
+      });
+      await saveJSON(pk("milestones"), state.milestones);
+      addingMilestone = false;
+      renderMilestoneSection();
+    });
+    const saveBtn = document.querySelector('[data-action="save-milestone"]');
+    if(saveBtn) saveBtn.addEventListener("click", async ()=>{
+      const titleInput = document.getElementById("milestone-title");
+      const dateInput = document.getElementById("milestone-date");
+      const title = titleInput.value.trim();
+      if(!title) return flashInvalid(titleInput);
+      if(!dateInput.value) return flashInvalid(dateInput);
+      const m = state.milestones.find(x=>x.id === saveBtn.dataset.id);
+      m.title = title;
+      m.date = dateInput.value;
+      m.type = document.getElementById("milestone-type").value;
+      m.description = document.getElementById("milestone-description").value.trim();
+      await saveJSON(pk("milestones"), state.milestones);
+      editingMilestoneId = null;
+      renderMilestoneSection();
+    });
+  }
+
   function todayLabel(){
     const d = new Date();
     const opts = {weekday:'long', day:'numeric', month:'long'};
@@ -954,6 +1197,8 @@
     document.getElementById("golden-rule-section").style.display = activeProfile === "santi" ? "block" : "none";
     renderCicloCardSection();
     renderStreakSection();
+    renderWeeklyProgress();
+    renderMilestoneSection();
 
     let done, total;
     if(activeProfile === "santi"){
