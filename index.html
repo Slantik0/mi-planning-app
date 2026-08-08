@@ -174,6 +174,21 @@
   .hero-text h2{ font-size:19px; font-weight:800; margin:0 0 4px; letter-spacing:-0.01em; }
   .hero-text p{ font-size:13px; color:rgba(255,255,255,0.78); margin:0; line-height:1.35; }
 
+  /* Widgets reordenables de Inicio (Bloque H) */
+  .widget{ position:relative; }
+  .widget-handle{
+    display:flex; align-items:center; justify-content:center; width:100%;
+    border:none; background:transparent; color:var(--ink-soft); font-size:15px;
+    padding:6px 0 4px; margin:0; cursor:grab; touch-action:none; font-family:inherit;
+    letter-spacing:3px; opacity:0.45; -webkit-user-select:none; user-select:none;
+  }
+  .widget-handle:active{ cursor:grabbing; opacity:0.85; }
+  .widget.widget-dragging{
+    box-shadow:0 12px 30px rgba(0,0,0,0.28); border-radius:var(--radius-lg);
+    background:var(--bg); opacity:0.96; pointer-events:none;
+  }
+  .widget-placeholder{ border:2px dashed var(--line); border-radius:var(--radius-lg); box-sizing:border-box; margin-bottom:14px; }
+
   /* Stat grid */
   .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px; }
   .stat{
@@ -517,49 +532,72 @@
         </div>
       </div>
 
-      <div class="grid2">
-        <div class="stat blue">
-          <div class="icon">📚</div>
-          <div class="val" id="stat-estudio">0/11</div>
-          <div class="lbl">Unidades hechas</div>
+      <div id="inicio-widgets">
+        <div class="widget" data-widget-id="stats">
+          <button type="button" class="widget-handle" aria-label="Mantén pulsado para reordenar: Resumen">⠿</button>
+          <div class="grid2">
+            <div class="stat blue">
+              <div class="icon">📚</div>
+              <div class="val" id="stat-estudio">0/11</div>
+              <div class="lbl">Unidades hechas</div>
+            </div>
+            <div class="stat green">
+              <div class="icon">🏋️</div>
+              <div class="val" id="stat-entreno">—</div>
+              <div class="lbl">Sesión de hoy</div>
+            </div>
+            <div class="stat gold">
+              <div class="icon">🍽</div>
+              <div class="val" id="stat-kcal">2810</div>
+              <div class="lbl">kcal objetivo</div>
+            </div>
+            <div class="stat brown">
+              <div class="icon">💶</div>
+              <div class="val" id="stat-balance">0 €</div>
+              <div class="lbl">Balance del mes</div>
+            </div>
+          </div>
         </div>
-        <div class="stat green">
-          <div class="icon">🏋️</div>
-          <div class="val" id="stat-entreno">—</div>
-          <div class="lbl">Sesión de hoy</div>
+
+        <div class="widget" data-widget-id="streak" id="streak-widget" style="display:none;">
+          <button type="button" class="widget-handle" aria-label="Mantén pulsado para reordenar: Racha">⠿</button>
+          <div id="streak-section"></div>
         </div>
-        <div class="stat gold">
-          <div class="icon">🍽</div>
-          <div class="val" id="stat-kcal">2810</div>
-          <div class="lbl">kcal objetivo</div>
+
+        <div class="widget" data-widget-id="weekly">
+          <button type="button" class="widget-handle" aria-label="Mantén pulsado para reordenar: Esta semana">⠿</button>
+          <div id="weekly-progress-section"></div>
         </div>
-        <div class="stat brown">
-          <div class="icon">💶</div>
-          <div class="val" id="stat-balance">0 €</div>
-          <div class="lbl">Balance del mes</div>
+
+        <div class="widget" data-widget-id="milestone">
+          <button type="button" class="widget-handle" aria-label="Mantén pulsado para reordenar: Próximo hito">⠿</button>
+          <div id="milestone-section"></div>
+        </div>
+
+        <div class="widget" data-widget-id="cycle">
+          <button type="button" class="widget-handle" aria-label="Mantén pulsado para reordenar: Ciclo">⠿</button>
+          <div id="cycle-card-section"></div>
+        </div>
+
+        <div class="widget" data-widget-id="goldenrule">
+          <button type="button" class="widget-handle" aria-label="Mantén pulsado para reordenar: La regla de oro">⠿</button>
+          <div id="golden-rule-section">
+            <p class="section-title">La regla de oro</p>
+            <div class="card">
+              <p style="margin:0; font-size:13.5px; line-height:1.5; color:var(--ink);">
+                Constancia en el <b>gimnasio</b> → rutina de <b>estudio</b> → todo lo demás.
+                Esos dos hábitos sostienen la dieta, las finanzas y las notas — no al revés.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="widget" data-widget-id="pending-units">
+          <button type="button" class="widget-handle" aria-label="Mantén pulsado para reordenar: Próximas unidades pendientes">⠿</button>
+          <p class="section-title">Próximas unidades pendientes</p>
+          <div class="card" id="pending-units-card"></div>
         </div>
       </div>
-
-      <div id="streak-section" style="display:none;"></div>
-
-      <div id="weekly-progress-section"></div>
-
-      <div id="milestone-section"></div>
-
-      <div id="cycle-card-section"></div>
-
-      <div id="golden-rule-section">
-        <p class="section-title">La regla de oro</p>
-        <div class="card">
-          <p style="margin:0; font-size:13.5px; line-height:1.5; color:var(--ink);">
-            Constancia en el <b>gimnasio</b> → rutina de <b>estudio</b> → todo lo demás.
-            Esos dos hábitos sostienen la dieta, las finanzas y las notas — no al revés.
-          </p>
-        </div>
-      </div>
-
-      <p class="section-title">Próximas unidades pendientes</p>
-      <div class="card" id="pending-units-card"></div>
 
       <p class="section-title">Apariencia</p>
       <div class="card">
@@ -922,6 +960,7 @@
     shoppingListExtra: [],   // [{id,text,checked}]  artículos añadidos a mano a la lista de la compra
     milestones: [],          // [{id,title,date:"YYYY-MM-DD",type:"examen"|"objetivo"|"otro",description}]  hitos de Inicio
     pomodoroLog: {},          // {"YYYY-MM-DD": count}  pomodoros de concentración completados por día
+    widgetOrder: null,        // [widgetId,...] orden de las tarjetas de Inicio; null = orden por defecto (DEFAULT_WIDGET_ORDER)
   };
 
   async function loadState(){
@@ -954,6 +993,7 @@
     state.milestones = await loadJSON(pk("milestones"), []);
     state.pomodoroLog = await loadJSON(pk("pomodoroLog"), {});
     pomodoroCompletedToday = state.pomodoroLog[isoDate(todayDate())] || 0;
+    state.widgetOrder = await loadJSON(pk("widgetOrder"), null);
   }
 
   function renderAll(){
@@ -1107,9 +1147,10 @@
 
   function renderStreakSection(){
     const el = document.getElementById("streak-section");
+    const widget = document.getElementById("streak-widget");
     const streak = currentStreak();
-    if(streak < 1){ el.style.display = "none"; el.innerHTML = ""; return; }
-    el.style.display = "block";
+    if(streak < 1){ widget.style.display = "none"; el.innerHTML = ""; return; }
+    widget.style.display = "block";
     el.innerHTML = `
       <div class="streak-banner">
         <span class="flame">🔥</span>
@@ -1333,10 +1374,153 @@
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
 
+  /* ============ WIDGETS REORDENABLES (Inicio) ============ */
+  // Orden por defecto; si en el futuro se añade un tipo de widget nuevo, basta con
+  // incluir su id aquí — reconcileWidgetOrder() lo añadirá al final del orden guardado
+  // de cada perfil sin tocar ni perder el orden que el usuario ya haya personalizado.
+  const DEFAULT_WIDGET_ORDER = ["stats","streak","weekly","milestone","cycle","goldenrule","pending-units"];
+  function reconcileWidgetOrder(saved){
+    if(!saved || !saved.length) return DEFAULT_WIDGET_ORDER.slice();
+    const known = saved.filter(id => DEFAULT_WIDGET_ORDER.includes(id));
+    const missing = DEFAULT_WIDGET_ORDER.filter(id => !known.includes(id));
+    return known.concat(missing);
+  }
+  function applyWidgetOrder(){
+    const container = document.getElementById("inicio-widgets");
+    if(!container) return;
+    const order = reconcileWidgetOrder(state.widgetOrder);
+    order.forEach(id=>{
+      const el = container.querySelector(`[data-widget-id="${id}"]`);
+      if(el) container.appendChild(el);
+    });
+  }
+  async function saveWidgetOrderFromDOM(){
+    const container = document.getElementById("inicio-widgets");
+    if(!container) return;
+    const order = [...container.children].map(el=>el.dataset.widgetId);
+    state.widgetOrder = order;
+    await saveJSON(pk("widgetOrder"), order);
+  }
+
+  // Arrastrar para reordenar: pulsación larga sobre el asa (⠿) y luego arrastre vertical.
+  // Solo el asa escucha el gesto (touch-action:none únicamente ahí), así que el scroll
+  // normal de la página — incluso empezando sobre el resto de la tarjeta — nunca se ve
+  // afectado. Mientras se arrastra, la tarjeta se saca del flujo (position:fixed) y un
+  // hueco "placeholder" del mismo tamaño ocupa su sitio en la lista; al soltar, la tarjeta
+  // real sustituye al hueco en su posición final y se guarda el nuevo orden.
+  const WIDGET_LONGPRESS_MS = 350;
+  const WIDGET_MOVE_CANCEL_PX = 10;
+  let widgetDragState = null;
+
+  function setupWidgetReorder(){
+    document.querySelectorAll(".widget-handle").forEach(handle=>{
+      let pressTimer = null;
+      let startX = 0, startY = 0;
+      let moveCancelled = false;
+
+      const onMoveBeforeDrag = (e)=>{
+        if(Math.abs(e.clientX-startX) > WIDGET_MOVE_CANCEL_PX || Math.abs(e.clientY-startY) > WIDGET_MOVE_CANCEL_PX){
+          moveCancelled = true;
+          clearTimeout(pressTimer);
+          handle.removeEventListener("pointermove", onMoveBeforeDrag);
+        }
+      };
+      const cleanupBeforeDrag = ()=>{
+        clearTimeout(pressTimer);
+        handle.removeEventListener("pointermove", onMoveBeforeDrag);
+        handle.removeEventListener("pointerup", cleanupBeforeDrag);
+        handle.removeEventListener("pointercancel", cleanupBeforeDrag);
+      };
+
+      handle.addEventListener("pointerdown", (e)=>{
+        if(e.pointerType === "mouse" && e.button !== 0) return;
+        startX = e.clientX; startY = e.clientY;
+        moveCancelled = false;
+        handle.addEventListener("pointermove", onMoveBeforeDrag);
+        handle.addEventListener("pointerup", cleanupBeforeDrag);
+        handle.addEventListener("pointercancel", cleanupBeforeDrag);
+        pressTimer = setTimeout(()=>{
+          if(moveCancelled) return;
+          handle.removeEventListener("pointermove", onMoveBeforeDrag);
+          handle.removeEventListener("pointerup", cleanupBeforeDrag);
+          handle.removeEventListener("pointercancel", cleanupBeforeDrag);
+          beginWidgetDrag(handle, e);
+        }, WIDGET_LONGPRESS_MS);
+      });
+    });
+  }
+
+  function beginWidgetDrag(handle, startEvent){
+    const widgetEl = handle.closest(".widget");
+    const container = document.getElementById("inicio-widgets");
+    if(!widgetEl || !container) return;
+    if(navigator.vibrate) navigator.vibrate(12);
+
+    const rect = widgetEl.getBoundingClientRect();
+    const placeholder = document.createElement("div");
+    placeholder.className = "widget-placeholder";
+    placeholder.style.height = rect.height + "px";
+    container.insertBefore(placeholder, widgetEl);
+
+    widgetEl.classList.add("widget-dragging");
+    widgetEl.style.position = "fixed";
+    widgetEl.style.left = rect.left + "px";
+    widgetEl.style.top = rect.top + "px";
+    widgetEl.style.width = rect.width + "px";
+    document.body.appendChild(widgetEl);
+
+    widgetDragState = { widgetEl, placeholder, container, offsetY: startEvent.clientY - rect.top, startTop: rect.top };
+    handle.setPointerCapture(startEvent.pointerId);
+    handle.addEventListener("pointermove", onWidgetDragMove);
+    handle.addEventListener("pointerup", endWidgetDrag, { once:true });
+    handle.addEventListener("pointercancel", endWidgetDrag, { once:true });
+  }
+
+  function onWidgetDragMove(e){
+    if(!widgetDragState) return;
+    e.preventDefault();
+    const { widgetEl, placeholder, container } = widgetDragState;
+    const newTop = e.clientY - widgetDragState.offsetY;
+    widgetEl.style.top = newTop + "px";
+    const draggedCenter = newTop + widgetEl.offsetHeight/2;
+
+    const siblings = [...container.children].filter(c => c !== placeholder);
+    let target = null;
+    for(const sib of siblings){
+      const sibRect = sib.getBoundingClientRect();
+      if(draggedCenter < sibRect.top + sibRect.height/2){ target = sib; break; }
+    }
+    if(target){
+      if(target !== placeholder.nextSibling) container.insertBefore(placeholder, target);
+    } else if(container.lastElementChild !== placeholder){
+      container.appendChild(placeholder);
+    }
+  }
+
+  function endWidgetDrag(e){
+    if(!widgetDragState) return;
+    const { widgetEl, placeholder, container } = widgetDragState;
+    const handle = e.currentTarget;
+    handle.removeEventListener("pointermove", onWidgetDragMove);
+    if(handle.releasePointerCapture) { try{ handle.releasePointerCapture(e.pointerId); }catch(err){} }
+
+    container.insertBefore(widgetEl, placeholder);
+    placeholder.remove();
+    widgetEl.classList.remove("widget-dragging");
+    widgetEl.style.position = "";
+    widgetEl.style.left = "";
+    widgetEl.style.top = "";
+    widgetEl.style.width = "";
+
+    widgetDragState = null;
+    saveWidgetOrderFromDOM();
+  }
+
   /* ============ INICIO ============ */
   function renderInicio(){
+    applyWidgetOrder();
     renderPhase();
-    document.getElementById("golden-rule-section").style.display = activeProfile === "santi" ? "block" : "none";
+    document.getElementById("golden-rule-section").closest(".widget").style.display = activeProfile === "santi" ? "block" : "none";
     renderCicloCardSection();
     renderStreakSection();
     renderWeeklyProgress();
@@ -3497,8 +3681,9 @@
   function renderCicloCardSection(){
     const el = document.getElementById("cycle-card-section");
     if(!el) return;
-    if(activeProfile !== "noelia"){ el.innerHTML = ""; el.style.display = "none"; return; }
-    el.style.display = "block";
+    const widget = el.closest(".widget");
+    if(activeProfile !== "noelia"){ el.innerHTML = ""; widget.style.display = "none"; return; }
+    widget.style.display = "block";
     el.innerHTML = cycleCardHTML();
     const setupBtn = document.getElementById("cycle-card-setup-btn");
     if(setupBtn) setupBtn.addEventListener("click", ()=>{
@@ -4012,6 +4197,7 @@
 
   /* ============ FORM HANDLERS ============ */
   function setupHandlers(){
+    setupWidgetReorder();
     document.getElementById("weight-add-btn").addEventListener("click", async ()=>{
       const weightInput = document.getElementById("weight-input");
       const val = parseFloat(weightInput.value);
