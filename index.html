@@ -908,6 +908,9 @@
     editingMilestoneId = null;
     milestonesExpanded = false;
     addingMilestone = false;
+    selectedStrengthExercise = null;
+    strengthManageExpanded = false;
+    editingStrengthId = null;
     renderProfileSwitch();
     updateHeader();
     renderAll();
@@ -1887,6 +1890,8 @@
 
   /* ---- Historial de 1RM / progreso por ejercicio ---- */
   let selectedStrengthExercise = null;
+  let strengthManageExpanded = false;
+  let editingStrengthId = null;
 
   function strengthChartSVG(points){
     if(points.length < 2){
@@ -1910,6 +1915,15 @@
     </svg>`;
   }
 
+  function strengthEntryFormHTML(entry){
+    return `
+      <div class="field-group" style="margin-top:0;"><label>Fecha</label>
+        <input type="date" id="strength-edit-date" value="${entry.date}">
+      </div>
+      <div class="field-group"><label>Peso (kg)</label>
+        <input type="text" id="strength-edit-weight" inputmode="decimal" value="${fmtDecimal(entry.weight)}">
+      </div>`;
+  }
   function renderStrengthHistory(){
     const titleEl = document.getElementById("strength-history-title");
     const card = document.getElementById("strength-history-card");
@@ -1927,10 +1941,10 @@
       const byRecent = [...state.strengthLog].sort((a,b)=> a.date < b.date ? 1 : -1);
       selectedStrengthExercise = byRecent[0].exercise;
     }
-    const points = state.strengthLog
+    const allEntriesForExercise = state.strengthLog
       .filter(e=>e.exercise === selectedStrengthExercise)
-      .sort((a,b)=> a.date < b.date ? -1 : 1)
-      .slice(-10); // últimos 10 puntos: suficiente para ver la tendencia sin saturar el gráfico
+      .sort((a,b)=> a.date < b.date ? -1 : 1);
+    const points = allEntriesForExercise.slice(-10); // últimos 10 puntos: suficiente para ver la tendencia sin saturar el gráfico
     const latest = points[points.length-1];
     const first = points[0];
     const delta = Math.round((latest.weight - first.weight)*10)/10;
@@ -1938,6 +1952,33 @@
       delta === 0 ? "Sin cambios desde el primer registro" :
       `${delta>0?'+':''}${fmtDecimal(delta)} kg desde el primer registro`;
     const latestDateLabel = latest.date === isoDate(todayDate()) ? "hoy" : parseISODate(latest.date).toLocaleDateString('es-ES',{day:'numeric',month:'long'});
+
+    let manageHTML = "";
+    if(strengthManageExpanded){
+      const rowsSorted = [...allEntriesForExercise].reverse(); // más reciente primero
+      const rows = rowsSorted.map(entry=>{
+        if(editingStrengthId === entry.id){
+          return `<div class="list-row" style="flex-direction:column; align-items:stretch;">
+            ${strengthEntryFormHTML(entry)}
+            <div class="btnrow">
+              <button class="btn ghost" data-action="save-strength" data-id="${entry.id}">Guardar</button>
+              <button class="btn ghost" data-action="cancel-strength">Cancelar</button>
+            </div>
+          </div>`;
+        }
+        const dateLabel = parseISODate(entry.date).toLocaleDateString('es-ES',{day:'numeric',month:'long',year:'numeric'});
+        return `<div class="list-row">
+          <span class="txt">${dateLabel}</span>
+          <b>${fmtDecimal(entry.weight)} kg</b>
+          <button class="food-del" data-action="edit-strength" data-id="${entry.id}" title="Editar" aria-label="Editar registro del ${dateLabel}">✎</button>
+          <button class="food-del" data-action="del-strength" data-id="${entry.id}" title="Eliminar" aria-label="Eliminar registro del ${dateLabel}">✕</button>
+        </div>`;
+      }).join("");
+      manageHTML = `<div style="margin-top:10px; padding-top:10px; border-top:0.5px solid var(--line);">
+        ${rowsSorted.length ? rows : '<div class="empty">Sin registros.</div>'}
+      </div>`;
+    }
+
     card.innerHTML = `
       <select id="strength-exercise-select" class="select-plain" aria-label="Elegir ejercicio">
         ${exercises.map(ex=>`<option value="${escapeHtml(ex)}" ${ex===selectedStrengthExercise?'selected':''}>${escapeHtml(ex)}</option>`).join("")}
@@ -1948,9 +1989,56 @@
       </div>
       ${deltaLabel ? `<div style="font-size:12px; color:${delta>0?'var(--green)':delta<0?'var(--brown)':'var(--ink-soft)'}; margin-top:2px;">${deltaLabel}</div>` : ""}
       <div style="margin-top:10px;">${strengthChartSVG(points)}</div>
+      <div class="btnrow" style="margin-top:10px;"><button class="btn ghost" id="strength-manage-toggle-btn">${strengthManageExpanded ? 'Ocultar registros' : `Gestionar registros (${allEntriesForExercise.length})`}</button></div>
+      ${manageHTML}
     `;
     document.getElementById("strength-exercise-select").addEventListener("change", (e)=>{
       selectedStrengthExercise = e.target.value;
+      strengthManageExpanded = false;
+      editingStrengthId = null;
+      renderStrengthHistory();
+    });
+    document.getElementById("strength-manage-toggle-btn").addEventListener("click", ()=>{
+      strengthManageExpanded = !strengthManageExpanded;
+      editingStrengthId = null;
+      renderStrengthHistory();
+    });
+    document.querySelectorAll('[data-action="edit-strength"]').forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        editingStrengthId = btn.dataset.id;
+        renderStrengthHistory();
+      });
+    });
+    document.querySelectorAll('[data-action="cancel-strength"]').forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        editingStrengthId = null;
+        renderStrengthHistory();
+      });
+    });
+    document.querySelectorAll('[data-action="del-strength"]').forEach(btn=>{
+      bindConfirmDelete(btn, async ()=>{
+        state.strengthLog = state.strengthLog.filter(e=>e.id !== btn.dataset.id);
+        await saveJSON(pk("strengthLog"), state.strengthLog);
+        editingStrengthId = null;
+        renderStrengthHistory();
+      });
+    });
+    const saveBtn = document.querySelector('[data-action="save-strength"]');
+    if(saveBtn) saveBtn.addEventListener("click", async ()=>{
+      const dateInput = document.getElementById("strength-edit-date");
+      const weightInput = document.getElementById("strength-edit-weight");
+      if(!dateInput.value) return flashInvalid(dateInput);
+      const weight = parseWeightNumber(weightInput.value);
+      if(weight === null) return flashInvalid(weightInput);
+      const entry = state.strengthLog.find(e=>e.id === saveBtn.dataset.id);
+      // Evita que dos registros del mismo ejercicio compartan fecha: rompería el
+      // "un punto por ejercicio y día" que asume el resto del historial (upsertStrengthLog).
+      const collision = state.strengthLog.find(e=>e.id !== entry.id && e.exercise === entry.exercise && e.date === dateInput.value);
+      if(collision) return flashInvalid(dateInput);
+      entry.date = dateInput.value;
+      entry.weight = weight;
+      await saveJSON(pk("strengthLog"), state.strengthLog);
+      editingStrengthId = null;
       renderStrengthHistory();
     });
   }
