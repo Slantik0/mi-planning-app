@@ -15,6 +15,7 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
   :root{
+    color-scheme: light;
     --bg:#F2F2F7;
     --card:#FFFFFF;
     --ink:#1C1C1E;
@@ -33,11 +34,51 @@
     --rose-soft:#F3E1EA;
     --grey:#58626E;
     --grey-soft:#E7E9EC;
+    --purple:#6B4C9A;
+    --purple-soft:#E7DEF2;
+    --brown-soft-alt:#F3E1DC;
+    --accent-highlight:var(--navy);
+    --kcal-fill:var(--navy);
+    --bg-blur:rgba(242,242,247,0.82);
+    --tabbar-blur:rgba(255,255,255,0.82);
     --radius-lg:22px;
     --radius-md:16px;
     --radius-sm:10px;
     --safe-top: env(safe-area-inset-top, 0px);
     --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  /* Modo oscuro: superficies (fondo/tarjeta/texto/línea), fondos "-soft" de las píldoras,
+     y versiones aclaradas de blue/green/brown/rose/grey/purple — esos colores se eligieron
+     para leerse bien como texto sobre tarjetas CLARAS; sobre una tarjeta oscura el mismo tono
+     queda casi ilegible (ratio ~2.5-3:1 medido), así que se aclaran aquí. navy y gold se
+     mantienen EXACTAMENTE igual en ambos temas (no se toca la identidad navy/gold): navy ya
+     funciona como fondo oscuro con texto blanco en cualquier tema, y gold ya tiene contraste
+     de sobra sobre tarjeta oscura sin aclararlo. */
+  :root[data-theme="dark"]{
+    color-scheme: dark;
+    --bg:#0B0B0D;
+    --card:#1C1C1E;
+    --ink:#F2F2F2;
+    --ink-soft:#98989D;
+    --line:#38383A;
+    --gold-soft:#3D3419;
+    --blue:#5B8FD9;
+    --blue-soft:#1E2C40;
+    --green:#4F9A54;
+    --green-soft:#1E3320;
+    --brown:#C07F35;
+    --brown-soft:#3B2E18;
+    --rose:#CD7C9B;
+    --rose-soft:#3A2530;
+    --grey:#8792A0;
+    --grey-soft:#2C2C2E;
+    --purple:#A084D1;
+    --purple-soft:#2E2640;
+    --brown-soft-alt:#3A2A22;
+    --accent-highlight:var(--gold);
+    --kcal-fill:var(--blue);
+    --bg-blur:rgba(11,11,13,0.82);
+    --tabbar-blur:rgba(20,20,22,0.86);
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{height:100%;}
@@ -61,7 +102,7 @@
   .navbar{
     position:sticky; top:0; z-index:20;
     padding: calc(var(--safe-top) + 14px) 20px 12px;
-    background: rgba(242,242,247,0.82);
+    background: var(--bg-blur);
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
     border-bottom: 0.5px solid var(--line);
@@ -154,7 +195,7 @@
   .check{
     width:26px; height:26px; border-radius:50%; border:2px solid var(--line);
     display:flex; align-items:center; justify-content:center; flex:none;
-    transition: all .15s ease; font-size:14px; color:transparent; background:#fff;
+    transition: all .15s ease; font-size:14px; color:transparent; background:var(--card);
     padding:0; font-family:inherit; cursor:pointer;
   }
   .check.done{ background:var(--green); border-color:var(--green); color:#fff; }
@@ -183,7 +224,7 @@
   .week-dot{ width:20px; height:20px; border-radius:50%; background:var(--grey-soft); margin:0 auto; }
   .week-dot.done.gym{ background:var(--green); }
   .week-dot.done.study{ background:var(--blue); }
-  .week-dot.today{ box-shadow:0 0 0 2px var(--navy); }
+  .week-dot.today{ box-shadow:0 0 0 2px var(--accent-highlight); }
   .week-habit-dowrow{ display:grid; grid-template-columns:56px repeat(7,1fr); gap:4px; margin-top:2px; }
   .week-habit-dowrow span{ text-align:center; font-size:10.5px; color:var(--ink-soft); font-weight:600; }
 
@@ -213,7 +254,7 @@
   .week-bar-col{ display:flex; flex-direction:column; align-items:center; gap:6px; flex:1; }
   .week-bar{ width:16px; border-radius:4px 4px 0 0; min-height:2px; transition: height .3s ease; }
   .week-bar-lbl{ font-size:10.5px; color:var(--ink-soft); font-weight:600; }
-  .week-bar-lbl.week-bar-today{ color:var(--navy); font-weight:800; }
+  .week-bar-lbl.week-bar-today{ color:var(--ink); font-weight:800; }
 
   .favorite-chips{ display:flex; flex-wrap:wrap; gap:6px; margin:0 0 10px; }
   .favorite-chip{
@@ -263,7 +304,7 @@
   .cal-day.cal-period-predicted{ border:2px dashed var(--rose); color:var(--rose); font-weight:700; }
   .cal-day.cal-fertile{ background:var(--rose-soft); color:var(--ink); }
   .cal-day.cal-ovulation{ background:var(--rose-soft); color:var(--rose); font-weight:800; box-shadow:inset 0 0 0 2px var(--rose); }
-  .cal-day.cal-today{ box-shadow:0 0 0 2px var(--navy); }
+  .cal-day.cal-today{ box-shadow:0 0 0 2px var(--accent-highlight); }
   .cal-legend{ display:flex; flex-wrap:wrap; gap:10px 14px; margin-top:12px; font-size:11.5px; color:var(--ink-soft); }
   .cal-legend-item{ display:flex; align-items:center; gap:5px; }
   .cal-legend-dot{ width:10px; height:10px; border-radius:50%; flex:none; }
@@ -283,7 +324,7 @@
   .set-dot{
     width:24px; height:24px; border-radius:50%; border:2px solid var(--line); flex:none;
     display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700;
-    color:var(--ink-soft); background:#fff; padding:0; font-family:inherit; cursor:pointer;
+    color:var(--ink-soft); background:var(--card); padding:0; font-family:inherit; cursor:pointer;
     transition: all .15s ease;
   }
   .set-dot.done{ background:var(--green); border-color:var(--green); color:#fff; }
@@ -328,6 +369,9 @@
   .seg button.active.fijo{ background:var(--brown); color:#fff; }
   .seg button.active.variable{ background:var(--grey); color:#fff; }
   .seg button.active.ninguna{ background:var(--ink-soft); color:#fff; }
+  .seg button.active.theme-auto{ background:var(--grey); color:#fff; }
+  .seg button.active.theme-light{ background:var(--gold); color:#fff; }
+  .seg button.active.theme-dark{ background:var(--navy); color:#fff; }
 
   .balance-big{ font-size:30px; font-weight:800; letter-spacing:-0.02em; }
   .expense-list .list-row .amt{ font-weight:700; font-size:14px; }
@@ -342,7 +386,7 @@
     max-width:430px; margin:0 auto;
     display:flex;
     padding: 8px 4px calc(6px + var(--safe-bottom));
-    background: rgba(255,255,255,0.82);
+    background: var(--tabbar-blur);
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
     border-top: 0.5px solid var(--line);
@@ -355,7 +399,7 @@
   .tab:active{ transform:scale(0.9); }
   .tab .ic{ font-size:21px; line-height:1; }
   .tab .lb{ font-size:10px; font-weight:600; }
-  .tab.active{ color:var(--navy); }
+  .tab.active{ color:var(--accent-highlight); }
   .tab.active .ic{ transform:translateY(-1px); }
 
   /* ---------- Profile switch ---------- */
@@ -506,6 +550,15 @@
       <p class="section-title">Próximas unidades pendientes</p>
       <div class="card" id="pending-units-card"></div>
 
+      <p class="section-title">Apariencia</p>
+      <div class="card">
+        <div class="seg" id="theme-seg">
+          <button type="button" data-theme-pref="auto" class="active theme-auto" aria-pressed="true">Automático</button>
+          <button type="button" data-theme-pref="light" class="theme-light" aria-pressed="false">Claro</button>
+          <button type="button" data-theme-pref="dark" class="theme-dark" aria-pressed="false">Oscuro</button>
+        </div>
+      </div>
+
       <p class="section-title">Copia de seguridad</p>
       <div class="card">
         <p style="margin:0 0 10px; font-size:13px; color:var(--ink-soft); line-height:1.5;">
@@ -628,8 +681,8 @@
     {id:"AE",  name:"Alimentación equilibrada", color:"var(--blue)", soft:"var(--blue-soft)"},
     {id:"FIS", name:"Fisiopatología aplicada a la dietética", color:"var(--green)", soft:"var(--green-soft)"},
     {id:"CA",  name:"Control alimentario", color:"var(--gold)", soft:"var(--gold-soft)"},
-    {id:"ORG", name:"Organización y gestión del área de trabajo", color:"#6B4C9A", soft:"#E7DEF2"},
-    {id:"REL", name:"Relaciones en el entorno de trabajo", color:"var(--brown)", soft:"#F3E1DC"},
+    {id:"ORG", name:"Organización y gestión del área de trabajo", color:"var(--purple)", soft:"var(--purple-soft)"},
+    {id:"REL", name:"Relaciones en el entorno de trabajo", color:"var(--brown)", soft:"var(--brown-soft-alt)"},
   ];
 
   const UNITS = [
@@ -664,7 +717,7 @@
         ["Plancha + rueda abdominal","3 x 30-45s","peso corporal"],
     ]},
     3:{ name:"Descanso", focus:"Recuperación activa", color:"var(--ink-soft)", exs:[]},
-    4:{ name:"Tren superior B", focus:"Hipertrofia", color:"#6B4C9A", exs:[
+    4:{ name:"Tren superior B", focus:"Hipertrofia", color:"var(--purple)", exs:[
         ["Press inclinado con mancuernas","4 x 8-10","20-24 kg"],
         ["Jalón al pecho","4 x 8-10","50-60 kg"],
         ["Remo sentado en polea","3 x 10-12","45-55 kg"],
@@ -919,8 +972,51 @@
     renderAll();
   }
 
+  /* ============ TEMA (claro/oscuro) ============ */
+  // Preferencia a nivel de dispositivo (como activeProfile), no por perfil: es una
+  // propiedad de la pantalla/dispositivo físico, no de los datos de Santi o Noelia.
+  let themePreference = "auto"; // "auto" | "light" | "dark"
+  const THEME_META_COLOR = { light: "#F2F2F7", dark: "#0B0B0D" };
+
+  function effectiveTheme(){
+    if(themePreference === "light" || themePreference === "dark") return themePreference;
+    return (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+  }
+  function applyTheme(){
+    const eff = effectiveTheme();
+    document.documentElement.setAttribute("data-theme", eff);
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if(metaTheme) metaTheme.setAttribute("content", THEME_META_COLOR[eff]);
+  }
+  function renderThemeSeg(){
+    document.querySelectorAll("#theme-seg button").forEach(b=>{
+      const isActive = b.dataset.themePref === themePreference;
+      b.classList.toggle("active", isActive);
+      b.setAttribute("aria-pressed", isActive ? "true" : "false");
+    });
+  }
+  async function initTheme(){
+    themePreference = await loadJSON("themePreference", "auto");
+    applyTheme();
+    renderThemeSeg();
+    if(window.matchMedia){
+      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ()=>{
+        if(themePreference === "auto") applyTheme();
+      });
+    }
+    document.querySelectorAll("#theme-seg button").forEach(b=>{
+      b.addEventListener("click", async ()=>{
+        themePreference = b.dataset.themePref;
+        await saveJSON("themePreference", themePreference);
+        applyTheme();
+        renderThemeSeg();
+      });
+    });
+  }
+
   /* ============ INIT ============ */
   async function init(){
+    await initTheme();
     activeProfile = await loadJSON("activeProfile", "santi");
     await loadState();
     renderProfileSwitch();
@@ -1377,7 +1473,7 @@
   }
 
   /* ============ ESTUDIO ============ */
-  const STUDY_PALETTE = ["var(--blue)","var(--green)","var(--gold)","#6B4C9A","var(--brown)"];
+  const STUDY_PALETTE = ["var(--blue)","var(--green)","var(--gold)","var(--purple)","var(--brown)"];
   let editingUnitKey = null;    // "mi-ui" de la unidad en edición (perfiles con contenido propio, ej. Noelia)
   let editingModuleIndex = null; // índice del curso/módulo en edición de nombre
   let openNoteUnitId = null;    // id de la unidad con la nota rápida desplegada (una sola a la vez)
@@ -2367,7 +2463,7 @@
     {cats:["fruta","verdura"], label:"Frutas y verduras", color:"var(--green)"},
     {cats:["lacteo"], label:"Lácteos", color:"var(--gold)"},
     {cats:["carbohidrato","legumbre","grasa","despensa","plato"], label:"Despensa", color:"var(--brown)"},
-    {cats:["bebida"], label:"Bebidas", color:"#6B4C9A"},
+    {cats:["bebida"], label:"Bebidas", color:"var(--purple)"},
   ];
   function shoppingGroupFor(cat){
     return SHOPPING_GROUPS.find(g=>g.cats.includes(cat)) || {label:"Otros", color:"var(--ink-soft)"};
@@ -2680,7 +2776,7 @@
     const progressHTML = `
       <p class="section-title" style="display:flex; align-items:center;">Consumido hoy${balancePill}</p>
       <div class="card">
-        <div class="macro-row"><div class="lbl">Kcal</div><div class="track"><span style="width:${pct(consumed.kcal,target.kcal)}%; background:var(--navy);"></span></div><div class="amt">${Math.round(consumed.kcal)} / ${target.kcal}</div></div>
+        <div class="macro-row"><div class="lbl">Kcal</div><div class="track"><span style="width:${pct(consumed.kcal,target.kcal)}%; background:var(--kcal-fill);"></span></div><div class="amt">${Math.round(consumed.kcal)} / ${target.kcal}</div></div>
         <div class="macro-row"><div class="lbl">Proteína</div><div class="track"><span style="width:${pct(consumed.protein,target.proteinG)}%; background:var(--blue);"></span></div><div class="amt">${Math.round(consumed.protein)} / ${target.proteinG} g</div></div>
         <div class="macro-row"><div class="lbl">Grasas</div><div class="track"><span style="width:${pct(consumed.fat,target.fatG)}%; background:var(--gold);"></span></div><div class="amt">${Math.round(consumed.fat)} / ${target.fatG} g</div></div>
         <div class="macro-row"><div class="lbl">Carbohidratos</div><div class="track"><span style="width:${pct(consumed.carbs,target.carbsG)}%; background:var(--green);"></span></div><div class="amt">${Math.round(consumed.carbs)} / ${target.carbsG} g</div></div>
@@ -3039,7 +3135,7 @@
     document.getElementById("gastos-gas").textContent = fmtEUR(gas);
     const balEl = document.getElementById("gastos-balance");
     balEl.textContent = fmtEUR(ing-gas);
-    balEl.style.color = (ing-gas) < 0 ? "var(--brown)" : "var(--navy)";
+    balEl.style.color = (ing-gas) < 0 ? "var(--brown)" : "var(--ink)";
 
     // Solo se muestra el desglose fijo/variable si hay al menos un gasto categorizado este mes
     // (los movimientos antiguos, de antes de que existiera esta distinción, no tienen categoria).
