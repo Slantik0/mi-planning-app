@@ -327,6 +327,7 @@
   .seg button.active.gasto{ background:var(--brown); color:#fff; }
   .seg button.active.fijo{ background:var(--brown); color:#fff; }
   .seg button.active.variable{ background:var(--grey); color:#fff; }
+  .seg button.active.ninguna{ background:var(--ink-soft); color:#fff; }
 
   .balance-big{ font-size:30px; font-weight:800; letter-spacing:-0.02em; }
   .expense-list .list-row .amt{ font-weight:700; font-size:14px; }
@@ -572,6 +573,7 @@
           <span>Gastos: <b id="gastos-gas" style="color:var(--brown);">0 €</b></span>
         </div>
         <div id="gastos-categorias" style="display:none; justify-content:center; gap:18px; margin-top:4px; font-size:11.5px; color:var(--ink-soft);"></div>
+        <p id="gastos-projection" style="display:none; margin:10px 0 0; font-size:12.5px; font-weight:600;"></p>
       </div>
 
       <p class="section-title">Meta de ahorro</p>
@@ -911,6 +913,7 @@
     selectedStrengthExercise = null;
     strengthManageExpanded = false;
     editingStrengthId = null;
+    editingExpenseCategoryId = null;
     renderProfileSwitch();
     updateHeader();
     renderAll();
@@ -2907,6 +2910,22 @@
 
   /* ---- Navegador de meses ---- */
   let gastosViewDate = new Date();
+  let editingExpenseCategoryId = null;
+
+  /* ---- Proyección de ahorro a fin de mes ---- */
+  // Solo tiene sentido para el mes en curso (los meses pasados ya son historial cerrado).
+  // Umbrales conservadores para no dar una proyección absurda con muy pocos datos: extrapolar
+  // el gasto de un único día 1 de mes al mes completo daría un número sin ningún sentido.
+  const PROJECTION_MIN_DAYS_ELAPSED = 3;
+  const PROJECTION_MIN_MOVEMENTS = 2;
+  function monthSavingsProjection(monthItems, ing, gas){
+    const now = new Date();
+    const daysElapsed = now.getDate();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+    if(daysElapsed < PROJECTION_MIN_DAYS_ELAPSED || monthItems.length < PROJECTION_MIN_MOVEMENTS) return null;
+    const dailyRate = (ing - gas) / daysElapsed;
+    return Math.round(dailyRate * daysInMonth);
+  }
 
   /* ---- Meta de ahorro ---- */
   let savingsGoalEditing = false;
@@ -3035,26 +3054,97 @@
       catEl.innerHTML = "";
     }
 
+    const projEl = document.getElementById("gastos-projection");
+    if(!isCurrentMonth){
+      projEl.style.display = "none";
+      projEl.textContent = "";
+    } else {
+      const proj = monthSavingsProjection(monthItems, ing, gas);
+      projEl.style.display = "block";
+      if(proj === null){
+        projEl.textContent = "Todavía no hay suficientes movimientos este mes para estimar el ahorro.";
+        projEl.style.color = "var(--ink-soft)";
+      } else if(proj >= 0){
+        projEl.textContent = `A este ritmo ahorrarás aproximadamente ${fmtEUR(proj)} este mes.`;
+        projEl.style.color = "var(--green)";
+      } else {
+        projEl.textContent = `A este ritmo gastarás aproximadamente ${fmtEUR(Math.abs(proj))} más de lo que ingreses este mes.`;
+        projEl.style.color = "var(--brown)";
+      }
+    }
+
     renderSavingsGoal();
 
     const list = document.getElementById("gastos-list");
     if(monthItems.length===0){
       list.innerHTML = `<div class="empty">${isCurrentMonth ? "Todavía no hay movimientos este mes." : "No hay movimientos en este mes."}</div>`;
     } else {
-      list.innerHTML = monthItems.map(e=>`
-        <div class="list-row">
-          <span class="txt">${escapeHtml(e.label) || (e.tipo==='ingreso'?'Ingreso':'Gasto')}${e.categoria ? ` <span class="pill" style="background:${e.categoria==='fijo'?'var(--brown-soft)':'var(--grey-soft)'}; color:${e.categoria==='fijo'?'var(--brown)':'var(--grey)'};">${e.categoria==='fijo'?'Fijo':'Variable'}</span>` : ""}</span>
+      list.innerHTML = monthItems.map(e=>{
+        const displayLabel = escapeHtml(e.label) || (e.tipo==='ingreso'?'Ingreso':'Gasto');
+        if(editingExpenseCategoryId === e.id){
+          return `<div class="list-row" style="flex-direction:column; align-items:stretch;">
+            <span class="txt">${displayLabel}</span>
+            <div class="seg" id="expense-cat-seg-${e.id}">
+              <button type="button" data-categoria="variable" class="variable ${e.categoria==='variable'?'active':''}" aria-pressed="${e.categoria==='variable'}">Variable</button>
+              <button type="button" data-categoria="fijo" class="fijo ${e.categoria==='fijo'?'active':''}" aria-pressed="${e.categoria==='fijo'}">Fijo</button>
+              <button type="button" data-categoria="" class="ninguna ${!e.categoria?'active':''}" aria-pressed="${!e.categoria}">Sin categoría</button>
+            </div>
+            <div class="btnrow">
+              <button class="btn ghost" data-action="save-expense-category" data-id="${e.id}">Guardar</button>
+              <button class="btn ghost" data-action="cancel-expense-category">Cancelar</button>
+            </div>
+          </div>`;
+        }
+        return `<div class="list-row">
+          <span class="txt">${displayLabel}${e.categoria ? ` <span class="pill" style="background:${e.categoria==='fijo'?'var(--brown-soft)':'var(--grey-soft)'}; color:${e.categoria==='fijo'?'var(--brown)':'var(--grey)'};">${e.categoria==='fijo'?'Fijo':'Variable'}</span>` : ""}</span>
           <span class="amt ${e.tipo==='ingreso'?'pos':'neg'}">${e.tipo==='ingreso'?'+':'-'}${e.amount.toLocaleString('es-ES')} €</span>
-          <button class="food-del" data-id="${e.id}" title="Eliminar" aria-label="Eliminar movimiento: ${escapeHtml(e.label) || (e.tipo==='ingreso'?'Ingreso':'Gasto')}">✕</button>
-        </div>
-      `).join("");
-      list.querySelectorAll(".food-del").forEach(btn=>{
+          ${e.tipo==='gasto' ? `<button class="food-del" data-action="edit-expense-category" data-id="${e.id}" title="Editar categoría" aria-label="Editar categoría de: ${displayLabel}">✎</button>` : ""}
+          <button class="food-del" data-action="del-expense" data-id="${e.id}" title="Eliminar" aria-label="Eliminar movimiento: ${displayLabel}">✕</button>
+        </div>`;
+      }).join("");
+      list.querySelectorAll('[data-action="del-expense"]').forEach(btn=>{
         bindConfirmDelete(btn, async ()=>{
           const id = Number(btn.dataset.id);
           state.expenses = state.expenses.filter(x=>x.id!==id);
           await saveJSON(pk("expenses"), state.expenses);
+          editingExpenseCategoryId = null;
           renderGastos();
           renderInicio();
+        });
+      });
+      list.querySelectorAll('[data-action="edit-expense-category"]').forEach(btn=>{
+        btn.addEventListener("click", ()=>{
+          editingExpenseCategoryId = Number(btn.dataset.id);
+          renderGastos();
+        });
+      });
+      list.querySelectorAll('[data-action="cancel-expense-category"]').forEach(btn=>{
+        btn.addEventListener("click", ()=>{
+          editingExpenseCategoryId = null;
+          renderGastos();
+        });
+      });
+      list.querySelectorAll('[data-action="save-expense-category"]').forEach(btn=>{
+        btn.addEventListener("click", async ()=>{
+          const id = Number(btn.dataset.id);
+          const seg = document.getElementById("expense-cat-seg-"+id);
+          const activeBtn = seg.querySelector("button.active");
+          const categoria = activeBtn ? (activeBtn.dataset.categoria || null) : null;
+          const entry = state.expenses.find(x=>x.id===id);
+          entry.categoria = categoria;
+          await saveJSON(pk("expenses"), state.expenses);
+          editingExpenseCategoryId = null;
+          renderGastos();
+        });
+      });
+      list.querySelectorAll('[id^="expense-cat-seg-"] button').forEach(b=>{
+        b.addEventListener("click", ()=>{
+          b.parentElement.querySelectorAll("button").forEach(x=>{
+            x.classList.remove("active");
+            x.setAttribute("aria-pressed","false");
+          });
+          b.classList.add("active");
+          b.setAttribute("aria-pressed","true");
         });
       });
     }
