@@ -123,6 +123,17 @@
   .view.active{ display:block; }
   @keyframes fadeIn{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
 
+  /* Bloque G: quien prefiera menos movimiento, prácticamente sin animación en toda la app
+     (no solo en las micro-animaciones nuevas de pulseComplete/pulseSaved, que ya se saltan
+     por JS, sino también en las transiciones/keyframes CSS ya existentes como fadeIn). */
+  @media (prefers-reduced-motion: reduce){
+    *, *::before, *::after{
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+
   /* ---------- Cards ---------- */
   .card{
     background:var(--card);
@@ -823,6 +834,32 @@
     el.classList.add("input-invalid");
     el.focus();
     setTimeout(()=>el.classList.remove("input-invalid"), 500);
+  }
+
+  // Micro-animaciones de refuerzo positivo (Bloque G): rápidas, sutiles, no bloqueantes
+  // (Web Animations API, no tocan el layout ni retrasan el guardado), y respetan
+  // prefers-reduced-motion. Se llaman de forma imperativa sobre el elemento que el
+  // usuario acaba de tocar, ANTES de que el siguiente render() reconstruya el DOM —
+  // así solo animan en el momento real de la acción, nunca al volver a una pantalla
+  // que ya tenía algo marcado/completado de antes.
+  function prefersReducedMotion(){
+    return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  }
+  // Pequeño "pop" al completar algo: marcar una unidad, una serie, un producto de la compra...
+  function pulseComplete(el){
+    if(!el || !el.animate || prefersReducedMotion()) return;
+    el.animate(
+      [{ transform:"scale(1)" }, { transform:"scale(1.28)" }, { transform:"scale(1)" }],
+      { duration:260, easing:"ease-out" }
+    );
+  }
+  // Breve destello de éxito en un botón tras guardar/añadir un registro (hito, 1RM, peso, gasto...).
+  function pulseSaved(el){
+    if(!el || !el.animate || prefersReducedMotion()) return;
+    el.animate(
+      [{ transform:"scale(1)" }, { transform:"scale(1.05)" }, { transform:"scale(1)" }],
+      { duration:220, easing:"ease-out" }
+    );
   }
 
   /* ============ STORAGE HELPERS ============ */
@@ -1567,6 +1604,7 @@
         el.addEventListener("click", async ()=>{
           const id = el.dataset.unit;
           state.checklist[id] = !state.checklist[id];
+          if(state.checklist[id]) pulseComplete(el);
           await saveJSON(pk("checklist"), state.checklist);
           if(state.checklist[id]) await recordStudyDay();
           renderEstudio();
@@ -1762,6 +1800,7 @@
         const mi = parseInt(el.dataset.mi,10), ui = parseInt(el.dataset.ui,10);
         const unit = state.studyModules[mi].units[ui];
         unit.done = !unit.done;
+        if(unit.done) pulseComplete(el);
         await saveJSON(pk("studyModules"), state.studyModules);
         if(unit.done) await recordStudyDay();
         renderEstudio();
@@ -1955,6 +1994,7 @@
         const idx = parseInt(btn.dataset.idx,10);
         const arr = state.setsLog[setsKey] ? [...state.setsLog[setsKey]] : new Array(count).fill(false);
         arr[idx] = !arr[idx];
+        if(arr[idx]) pulseComplete(btn);
         state.setsLog[setsKey] = arr;
         await saveJSON(pk("setsLog"), state.setsLog);
         if(arr.some(Boolean)) await recordTrainingDay(); // marcar una serie ya cuenta como haber entrenado hoy
@@ -2577,6 +2617,7 @@
       btn.addEventListener("click", async ()=>{
         const key = btn.dataset.shoppingKey;
         state.shoppingListChecked[key] = !state.shoppingListChecked[key];
+        if(state.shoppingListChecked[key]) pulseComplete(btn);
         if(!state.shoppingListChecked[key]) delete state.shoppingListChecked[key];
         await saveJSON(pk("shoppingListChecked"), state.shoppingListChecked);
         renderShoppingList();
@@ -2587,6 +2628,7 @@
         const id = btn.dataset.extraId;
         const it = state.shoppingListExtra.find(x=>String(x.id)===id);
         it.checked = !it.checked;
+        if(it.checked) pulseComplete(btn);
         await saveJSON(pk("shoppingListExtra"), state.shoppingListExtra);
         renderShoppingList();
       });
@@ -3978,6 +4020,7 @@
       const d = new Date();
       state.weightLog.push({date:d.toLocaleDateString('es-ES'), kg:val, note});
       await saveJSON(pk("weightLog"), state.weightLog);
+      pulseSaved(document.getElementById("weight-add-btn"));
       document.getElementById("weight-input").value = "";
       document.getElementById("weight-note").value = "";
       renderWeightHistory();
@@ -4023,6 +4066,7 @@
         ts: Date.now(),
       });
       await saveJSON(pk("expenses"), state.expenses);
+      pulseSaved(document.getElementById("gasto-add-btn"));
       document.getElementById("gasto-label").value = "";
       document.getElementById("gasto-amount").value = "";
       renderGastos();
