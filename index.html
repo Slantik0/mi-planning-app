@@ -829,6 +829,7 @@
     shoppingListChecked: {}, // {itemKey: true}  itemKey = nombre canónico de FOOD_DB o texto normalizado sin reconocer
     shoppingListExtra: [],   // [{id,text,checked}]  artículos añadidos a mano a la lista de la compra
     milestones: [],          // [{id,title,date:"YYYY-MM-DD",type:"examen"|"objetivo"|"otro",description}]  hitos de Inicio
+    pomodoroLog: {},          // {"YYYY-MM-DD": count}  pomodoros de concentración completados por día
   };
 
   async function loadState(){
@@ -859,6 +860,8 @@
     state.shoppingListChecked = await loadJSON(pk("shoppingListChecked"), {});
     state.shoppingListExtra = await loadJSON(pk("shoppingListExtra"), []);
     state.milestones = await loadJSON(pk("milestones"), []);
+    state.pomodoroLog = await loadJSON(pk("pomodoroLog"), {});
+    pomodoroCompletedToday = state.pomodoroLog[isoDate(todayDate())] || 0;
   }
 
   function renderAll(){
@@ -1262,32 +1265,47 @@
   }
 
   /* ============ POMODORO ============ */
-  // Estado deliberadamente NO persistido ni ligado a perfil: es un temporizador de la sesión
-  // actual del dispositivo, no un dato de planificación — igual de "efímero" que el reloj del
-  // móvil. Sigue corriendo en segundo plano al cambiar de pestaña o de perfil (SPA, no recarga).
-  const POMODORO_FOCUS = 25*60, POMODORO_BREAK = 5*60;
+  // El temporizador en sí (segundos restantes, si está corriendo) sigue siendo efímero y no
+  // ligado a perfil — igual de "efímero" que el reloj del móvil, sigue corriendo en segundo
+  // plano al cambiar de pestaña o de perfil (SPA, no recarga). Lo que SÍ se persiste ahora es
+  // el contador de pomodoros completados por día (pomodoroLog), para que no se pierda al
+  // recargar la página — esa era la única limitación real que quedaba del Bloque 2.
+  const POMODORO_FOCUS = 25*60, POMODORO_BREAK_SHORT = 5*60, POMODORO_BREAK_LONG = 15*60;
+  const POMODORO_LONG_BREAK_EVERY = 4;
   let pomodoroSecondsLeft = POMODORO_FOCUS;
-  let pomodoroPhase = "focus"; // "focus" | "break"
+  let pomodoroPhase = "focus"; // "focus" | "break-short" | "break-long"
   let pomodoroRunning = false;
   let pomodoroTimerId = null;
-  let pomodoroCompletedToday = 0; // solo de esta sesión del navegador, se reinicia al recargar
+  let pomodoroCompletedToday = 0; // inicializado desde state.pomodoroLog en loadState()
 
   function pomodoroFmt(s){
     const m = Math.floor(s/60), sec = s%60;
     return String(m).padStart(2,'0')+":"+String(sec).padStart(2,'0');
+  }
+  function pomodoroPhaseLabel(){
+    if(pomodoroPhase === "focus") return "Concentración";
+    if(pomodoroPhase === "break-long") return "Descanso largo";
+    return "Descanso";
+  }
+  function pomodoroCountLabel(){
+    if(!pomodoroCompletedToday) return `25 min de concentración + descanso (largo cada ${POMODORO_LONG_BREAK_EVERY})`;
+    return pomodoroCompletedToday+" pomodoro"+(pomodoroCompletedToday===1?'':'s')+" completados hoy";
   }
   function pomodoroCardHTML(){
     return `
       <div class="card pomodoro-card">
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <p class="section-title" style="margin:0;">Pomodoro</p>
-          <span class="pill" id="pomodoro-phase-pill" style="background:${pomodoroPhase==='focus'?'var(--blue)':'var(--green)'}; color:#fff;">${pomodoroPhase==='focus'?'Concentración':'Descanso'}</span>
+          <span class="pill" id="pomodoro-phase-pill" style="background:${pomodoroPhase==='focus'?'var(--blue)':'var(--green)'}; color:#fff;">${pomodoroPhaseLabel()}</span>
         </div>
         <div class="pomodoro-time" id="pomodoro-time">${pomodoroFmt(pomodoroSecondsLeft)}</div>
-        <div class="pomodoro-count" id="pomodoro-count">${pomodoroCompletedToday ? pomodoroCompletedToday+" pomodoro"+(pomodoroCompletedToday===1?'':'s')+" completados hoy" : "25 min de concentración + 5 de descanso"}</div>
+        <div class="pomodoro-count" id="pomodoro-count">${pomodoroCountLabel()}</div>
         <div class="btnrow">
           <button class="btn ${pomodoroPhase==='focus'?'primary-blue':'primary-green'}" id="pomodoro-toggle-btn">${pomodoroRunning?'Pausar':'Empezar'}</button>
           <button class="btn ghost" id="pomodoro-reset-btn">Reiniciar</button>
+        </div>
+        <div class="btnrow" id="pomodoro-skip-row" style="display:${pomodoroPhase==='focus'?'none':'flex'};">
+          <button class="btn ghost" id="pomodoro-skip-btn">Saltar descanso</button>
         </div>
       </div>`;
   }
@@ -1296,23 +1314,26 @@
     if(!timeEl) return; // ya no estamos en la vista de Estudio
     timeEl.textContent = pomodoroFmt(pomodoroSecondsLeft);
     const pill = document.getElementById("pomodoro-phase-pill");
-    pill.textContent = pomodoroPhase==='focus' ? 'Concentración' : 'Descanso';
+    pill.textContent = pomodoroPhaseLabel();
     pill.style.background = pomodoroPhase==='focus' ? 'var(--blue)' : 'var(--green)';
-    document.getElementById("pomodoro-count").textContent = pomodoroCompletedToday
-      ? pomodoroCompletedToday+" pomodoro"+(pomodoroCompletedToday===1?'':'s')+" completados hoy"
-      : "25 min de concentración + 5 de descanso";
+    document.getElementById("pomodoro-count").textContent = pomodoroCountLabel();
     const toggleBtn = document.getElementById("pomodoro-toggle-btn");
     toggleBtn.textContent = pomodoroRunning ? 'Pausar' : 'Empezar';
     toggleBtn.className = "btn " + (pomodoroPhase==='focus' ? 'primary-blue' : 'primary-green');
+    document.getElementById("pomodoro-skip-row").style.display = pomodoroPhase==='focus' ? 'none' : 'flex';
   }
   function pomodoroTick(){
     pomodoroSecondsLeft--;
     if(pomodoroSecondsLeft <= 0){
       if(pomodoroPhase === "focus"){
-        pomodoroCompletedToday++;
+        const key = isoDate(todayDate());
+        state.pomodoroLog[key] = (state.pomodoroLog[key] || 0) + 1;
+        pomodoroCompletedToday = state.pomodoroLog[key];
+        saveJSON(pk("pomodoroLog"), state.pomodoroLog); // en segundo plano, no bloquea el conteo
         recordStudyDay().then(renderInicio); // un pomodoro de concentración cuenta como "estudiar hoy" para la racha
-        pomodoroPhase = "break";
-        pomodoroSecondsLeft = POMODORO_BREAK;
+        const isLongBreak = pomodoroCompletedToday % POMODORO_LONG_BREAK_EVERY === 0;
+        pomodoroPhase = isLongBreak ? "break-long" : "break-short";
+        pomodoroSecondsLeft = isLongBreak ? POMODORO_BREAK_LONG : POMODORO_BREAK_SHORT;
       } else {
         pomodoroPhase = "focus";
         pomodoroSecondsLeft = POMODORO_FOCUS;
@@ -1331,6 +1352,16 @@
       updatePomodoroDisplay();
     });
     document.getElementById("pomodoro-reset-btn").addEventListener("click", ()=>{
+      // Reinicia solo la fase/temporizador en curso — el contador de pomodoros ya completados
+      // hoy es progreso real y no se toca.
+      pomodoroRunning = false;
+      clearInterval(pomodoroTimerId);
+      pomodoroPhase = "focus";
+      pomodoroSecondsLeft = POMODORO_FOCUS;
+      updatePomodoroDisplay();
+    });
+    document.getElementById("pomodoro-skip-btn").addEventListener("click", ()=>{
+      if(pomodoroPhase === "focus") return;
       pomodoroRunning = false;
       clearInterval(pomodoroTimerId);
       pomodoroPhase = "focus";
