@@ -80,3 +80,17 @@ async function cacheFirst(req) {
   cache.put(req, fresh.clone());
   return fresh;
 }
+
+// Al tocar un recordatorio (Bloque I), enfoca una pestaña de la app ya abierta o abre una
+// nueva — no depende de localStorage ni de nada que el Service Worker no pueda leer.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ("focus" in client) return client.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow("./");
+    })
+  );
+});
